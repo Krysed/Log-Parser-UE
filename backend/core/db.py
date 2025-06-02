@@ -1,4 +1,5 @@
 from .logger import logger
+from .parser import get_log_hash
 import psycopg2
 import psycopg2.extras
 import os
@@ -46,11 +47,16 @@ def insert_event(event_hash, message, timestamp, category, type_):
         return row["id"] if row else None, False
 
 
-def insert_traceback(event_id, message, line_number):
+def insert_traceback(event_id, message, line_number, hash):
+    cursor.execute("SELECT id FROM events WHERE hash = %s", (hash,))
+    existing = cursor.fetchone()
+    if existing:
+        return 
     cursor.execute("""
-        INSERT INTO error_traceback (error_id, message, line_number)
-        VALUES (%s, %s, %s)
-    """, (event_id, message, line_number))
+        INSERT INTO error_traceback (error_id, message, line_number, hash)
+        VALUES (%s, %s, %s, %s)
+    """, (event_id, message, line_number, hash))
+
 
 def get_or_create_event(event_hash, message, timestamp, category, type_):
     existing = db.query("SELECT id FROM events WHERE event_hash = ?", (event_hash,))
@@ -65,33 +71,18 @@ def insert_parsed_logs_to_db(log_entries):
             is_error_type = entry.get("type") == "error"
 
             if is_error_type or traceback_exists:
-            # if entry["type"] == "error" or entry.get("traceback", []):
-                insert_issue(
-                    issue_hash=entry["issue_hash"],
-                    message=entry["message"],
-                    timestamp=entry["timestamp"],
-                    category=entry["category"],
-                    status="open"
-                )
-
-                event_id = insert_event(
+                event_id, is_new_event = insert_event(
                     event_hash=entry["event_hash"],
                     message=entry["message"],
                     timestamp=entry["timestamp"],
                     category=entry["category"],
                     type_="error"
                 )
-                # TODO: insertując 2 razy jest w bazie jako error ale! jest pomieszane indexowanie. 
 
                 if not event_id:
                     logger.error(f"Failed to insert or fetch event for error log at line {entry.get('line_number')}, skipping traceback insert.")
                 else:
-                    for i, tb_message in enumerate(entry.get("traceback", [])):
-                        insert_traceback(
-                            event_id=event_id,
-                            message=tb_message["message"] if isinstance(tb_message, dict) else str(tb_message),
-                            line_number=entry.get("line_number", None) + i if entry.get("line_number") is not None else None
-                        )
+                    if is_new_event:
                         insert_issue(
                             issue_hash=entry["issue_hash"],
                             message=entry["message"],
@@ -99,8 +90,14 @@ def insert_parsed_logs_to_db(log_entries):
                             category=entry["category"],
                             status="open"
                         )
-                        logger.debug(f"Inserted traceback line for error_id={event_id}")
-
+                        for i, tb_message in enumerate(entry.get("traceback", [])):
+                            insert_traceback(
+                                event_id=event_id,
+                                message=tb_message["message"] if isinstance(tb_message, dict) else str(tb_message),
+                                line_number=entry.get("line_number", None) + i if entry.get("line_number") is not None else None,
+                                hash=get_log_hash(tb_message["message"])
+                            )
+                            logger.debug(f"Inserted traceback line for error_id={event_id}")
 
             elif entry["type"] == "warning":
                 insert_event(
@@ -116,7 +113,6 @@ def insert_parsed_logs_to_db(log_entries):
             continue
 
     db.commit()
-
 
 db = get_db_connection()
 cursor = db.cursor()
