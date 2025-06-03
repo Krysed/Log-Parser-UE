@@ -48,11 +48,7 @@ async def collect_logfile(file: UploadFile = File(...)):
         "parsed": len(parsed_entries)
     }
 
-# TODO: 
-def collect_operational_logs():
-    pass
-
-# es:
+# Elasticsearch
 @router.get("/logs/{log_entry_id}")
 def get_log_by_id(log_entry_id: str):
     result = fetch_log_entry(log_entry_id)
@@ -74,6 +70,7 @@ def get_log_datetime(log_id: str):
         raise HTTPException(status_code=404, detail="Timestamp not found")
     return {"datetime": datetime_value}
 
+# Postgres 
 @router.get("/issues/{issue_id}")
 def get_issue(issue_id: int):
     issue = get_issue_by_id(issue_id)

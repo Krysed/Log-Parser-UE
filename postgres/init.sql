@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS issues (
 CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
     issue_id INT REFERENCES issues(id),
-    type TEXT NOT NULL, -- 'error' or 'warning'
+    severity TEXT NOT NULL, -- 'error' or 'warning'
     category TEXT,
     message TEXT,
     timestamp TIMESTAMP,

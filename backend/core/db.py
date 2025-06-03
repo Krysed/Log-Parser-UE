@@ -30,16 +30,16 @@ def insert_issue(issue_hash, message, timestamp, category, status="open"):
     new_id = cursor.fetchone()["id"]
     return new_id
 
-def insert_event(event_hash, message, timestamp, category, type_, issue_id=None):
+def insert_event(event_hash, message, timestamp, category, severity, issue_id=None):
     cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
     existing = cursor.fetchone()
     if existing:
         return existing["id"], False
 
     cursor.execute("""
-        INSERT INTO events (hash, message, timestamp, category, type, issue_id)
+        INSERT INTO events (hash, message, timestamp, category, severity, issue_id)
         VALUES (%s, %s, %s, %s, %s, %s)
-    """, (event_hash, message, timestamp, category, type_, issue_id))
+    """, (event_hash, message, timestamp, category, severity, issue_id))
 
     cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
     row = cursor.fetchone()
@@ -60,7 +60,7 @@ def insert_parsed_logs_to_db(log_entries):
     for entry in log_entries:
         try:
             traceback_exists = entry.get("traceback") and len(entry["traceback"]) > 0
-            is_error_type = entry.get("type") == "error"
+            is_error_type = entry.get("severity") == "error"
 
             if is_error_type or traceback_exists:
                 insert_issue(
@@ -80,7 +80,7 @@ def insert_parsed_logs_to_db(log_entries):
                     message=entry["message"],
                     timestamp=entry["timestamp"],
                     category=entry["category"],
-                    type_="error",
+                    severity="error",
                     issue_id=issue_id
                 )
 
@@ -94,13 +94,13 @@ def insert_parsed_logs_to_db(log_entries):
                         )
                         logger.debug(f"Inserted traceback line for error_id={event_id}")
 
-            elif entry["type"] == "warning":
+            elif entry["severity"] == "warning":
                 insert_event(
                     event_hash=entry["hash"],
                     message=entry["message"],
                     timestamp=entry["timestamp"],
                     category=entry["category"],
-                    type_="warning",
+                    severity="warning",
                     issue_id=None
                 )
 

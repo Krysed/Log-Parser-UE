@@ -110,7 +110,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT 'Tracebacks' AS label, COUNT(*) AS value FROM error_traceback\nUNION ALL\nSELECT 'Warnings' AS label, COUNT(*) AS value FROM events WHERE type = 'warning'\nUNION ALL\nSELECT 'Errors' AS label, COUNT(*) AS value FROM events WHERE type = 'error'\n",
+          "rawSql": "SELECT 'Tracebacks' AS label, COUNT(*) AS value FROM error_traceback\nUNION ALL\nSELECT 'Warnings' AS label, COUNT(*) AS value FROM events WHERE severity = 'warning'\nUNION ALL\nSELECT 'Errors' AS label, COUNT(*) AS value FROM events WHERE severity = 'error'\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -414,7 +414,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as total FROM events WHERE type = 'warning';\n",
+          "rawSql": "SELECT COUNT(*) as total FROM events WHERE severity = 'warning';\n",
           "refId": "B",
           "sql": {
             "columns": [
@@ -941,7 +941,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT id, category, message, timestamp FROM events WHERE type = 'warning' ORDER BY id DESC;",
+          "rawSql": "SELECT id, category, message, timestamp FROM events WHERE severity = 'warning' ORDER BY id DESC;",
           "refId": "A",
           "sql": {
             "columns": [

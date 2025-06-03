@@ -46,7 +46,7 @@ def parse_line(line: str, line_number: int):
             message = message[category_len:].lstrip(": ").lstrip()
 
     return {
-        "type": log_type,
+        "severity": log_type,
         "category": category,
         "message": message,
         "timestamp": timestamp,
@@ -89,7 +89,7 @@ def parse_log_file(path: str) -> list:
                     issue_message = traceback_array[-1]["message"]
 
                 collected_traceback = {
-                    "type": "error",
+                    "severity": "error",
                     "message": issue_message,
                     "timestamp": traceback_array[-1]["timestamp"],
                     "category": traceback_array[-1].get("category"),
@@ -104,12 +104,12 @@ def parse_log_file(path: str) -> list:
                 continue
 
 
-        if parsed["type"] == "error":
+        if parsed["severity"] == "error":
             if current_error:
                 parsed_entries.append(current_error)
             current_error = parsed
             current_error["traceback"] = []
-        elif parsed["type"] == "warning":
+        elif parsed["severity"] == "warning":
             if current_error:
                 parsed_entries.append(current_error)
                 current_error = None
@@ -119,7 +119,7 @@ def parse_log_file(path: str) -> list:
         parsed_entries.append(current_error)
 
     for entry in parsed_entries:
-        if entry["type"] == "error":
+        if entry["severity"] == "error":
             entry["issue_hash"] = get_issue_hash(entry)
             entry["event_hash"] = get_event_hash(entry)
     return parsed_entries
