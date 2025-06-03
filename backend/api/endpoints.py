@@ -56,16 +56,16 @@ def get_log_by_id(log_entry_id: str):
         raise HTTPException(status_code=404, detail="Log entry not found")
     return result
 
-@router.get("/logs/{log_id}/line_number")
-def get_log_line(log_id: str):
-    line_number = fetch_log_line_number(log_id)
+@router.get("/logs/{log_entry_id}/line_number")
+def get_log_line(log_entry_id: str):
+    line_number = fetch_log_line_number(log_entry_id)
     if line_number is None:
         raise HTTPException(status_code=404, detail="Line number not found")
     return {"line_number": line_number}
 
-@router.get("/logs/{log_id}/datetime")
-def get_log_datetime(log_id: str):
-    datetime_value = fetch_log_datetime(log_id)
+@router.get("/logs/{log_entry_id}/datetime")
+def get_log_datetime(log_entry_id: str):
+    datetime_value = fetch_log_datetime(log_entry_id)
     if datetime_value is None:
         raise HTTPException(status_code=404, detail="Timestamp not found")
     return {"datetime": datetime_value}
