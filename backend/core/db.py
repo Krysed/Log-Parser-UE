@@ -142,5 +142,28 @@ def update_issue_status(issue_id, new_status):
         logger.error(f"DB error updating issue status: {e}")
         raise
 
+def get_issues(status=None):
+    if status and status not in ["open", "closed"]:
+        raise ValueError("Invalid status filter")
+    try:
+        if status:
+            cursor.execute("SELECT * FROM issues WHERE status = %s;", (status,))
+        else:
+            cursor.execute("SELECT * FROM issues;")
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": row.get("id"),
+                "message": row.get("message"),
+                "category": row.get("category", "unknown"),
+                "timestamp": row.get("timestamp", None),
+                "status": row.get("status", "open"),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.error(f"DB error fetching issues: {e}")
+        raise
+
 db = get_db_connection()
 cursor = db.cursor()

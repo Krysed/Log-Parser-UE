@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status
+from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues
 from core.es import es, insert_logfile_to_es
 from core.parser import parse_log_file
 from core.logger import logger
@@ -99,16 +99,13 @@ def get_issue(issue_id: int):
 
 @router.get("/issues")
 def list_issues(status: Optional[str] = Query(None)):
-    if status and status not in ["open", "closed"]:
-        raise HTTPException(status_code=400, detail="Invalid status filter")
-
-    if status:
-        cursor.execute("SELECT * FROM issues WHERE status = %s;", (status,))
-    else:
-        cursor.execute("SELECT * FROM issues;")
-
-    issues = cursor.fetchall()
-    return [{"id": i[0], "message": i[1], "category": i[2], "timestamp": i[3], "status": i[4]} for i in issues]
+    try:
+        return get_issues(status)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"API error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve issues")
 
 @router.patch("/issues/{issue_id}")
 def patch_issue_status(issue_id: int, new_status: str = Body(..., embed=True)):
