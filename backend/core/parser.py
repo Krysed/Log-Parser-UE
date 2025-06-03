@@ -82,9 +82,15 @@ def parse_log_file(path: str) -> list:
         if collecting_traceback:
             if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
                 collecting_traceback = False
+
+                if "commandletexception" in traceback_array[0]["message"].lower():
+                    issue_message = traceback_array[0]["message"]
+                else:
+                    issue_message = traceback_array[-1]["message"]
+
                 collected_traceback = {
                     "type": "error",
-                    "message": traceback_array[-1]["message"],
+                    "message": issue_message,
                     "timestamp": traceback_array[-1]["timestamp"],
                     "category": traceback_array[-1].get("category"),
                     "line_number": i + 1,

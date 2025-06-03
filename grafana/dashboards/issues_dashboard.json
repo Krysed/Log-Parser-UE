@@ -265,7 +265,7 @@
           }
         }
       ],
-      "title": "Events Distribution",
+      "title": "Issues Status",
       "type": "barchart"
     },
     {
@@ -773,6 +773,18 @@
               {
                 "id": "custom.width",
                 "value": 101
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "issue_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
               }
             ]
           }

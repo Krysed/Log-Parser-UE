@@ -17,26 +17,30 @@ def get_db_connection():
 
 # db operations
 def insert_issue(issue_hash, message, timestamp, category, status="open"):
+    cursor.execute("SELECT id FROM issues WHERE hash = %s", (issue_hash,))
+    existing = cursor.fetchone()
+    if existing:
+        return existing["id"]
+
     cursor.execute("""
         INSERT INTO issues (hash, message, timestamp, category, status)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (hash) DO NOTHING;
+        RETURNING id;
     """, (issue_hash, message, timestamp, category, status))
+    new_id = cursor.fetchone()["id"]
+    return new_id
 
 def insert_event(event_hash, message, timestamp, category, type_, issue_id=None):
-    # Sprawdź, czy event już istnieje
     cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
     existing = cursor.fetchone()
     if existing:
-        return existing["id"], False  # Event już istnieje, nic nie rób
+        return existing["id"], False
 
-    # Jeśli nie istnieje, wstaw nowy z issue_id
     cursor.execute("""
         INSERT INTO events (hash, message, timestamp, category, type, issue_id)
         VALUES (%s, %s, %s, %s, %s, %s)
     """, (event_hash, message, timestamp, category, type_, issue_id))
 
-    # Teraz pobierz ID nowo wstawionego eventu
     cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
     row = cursor.fetchone()
     return row["id"], True if row else (None, False)
@@ -51,13 +55,6 @@ def insert_traceback(event_id, message, line_number, hash):
         INSERT INTO error_traceback (error_id, message, line_number, hash)
         VALUES (%s, %s, %s, %s)
     """, (event_id, message, line_number, hash))
-
-
-def get_or_create_event(event_hash, message, timestamp, category, type_):
-    existing = db.query("SELECT id FROM events WHERE event_hash = ?", (event_hash,))
-    if existing:
-        return existing[0]["id"]
-    return insert_event(event_hash, message, timestamp, category, type_)
 
 def insert_parsed_logs_to_db(log_entries):
     for entry in log_entries:

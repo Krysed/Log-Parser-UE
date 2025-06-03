@@ -1,9 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
-from core.db import db, cursor, insert_parsed_logs_to_db
+from datetime import datetime, timezone
+from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event
 from core.es import es, insert_logfile_to_es
 from core.parser import parse_log_file
 from core.logger import logger
+from core.parser import get_log_hash
 
 import json
 import os
@@ -41,6 +43,7 @@ async def collect_logfile(file: UploadFile = File(...)):
             f.write(line.encode("utf-8"))
 
     insert_parsed_logs_to_db(parsed_entries)
+    # TODO: Uncomment this:
     # insert_logfile_to_es(filename)
     return {
         "filename": basename,
@@ -50,6 +53,9 @@ async def collect_logfile(file: UploadFile = File(...)):
 # TODO: 
 def collect_operational_logs():
     pass
+
+
+
 
 
 # es:
@@ -74,6 +80,8 @@ def get_log_datetime(log_id: str):
         return {"datetime": res["_source"].get("@timestamp")}
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Log with ID {log_id} not found: {e}")
+
+
 
 @router.get("/issues/{issue_id}")
 def get_issue(issue_id: int):
@@ -126,21 +134,23 @@ def delete_issue(issue_id: int = Path(...)):
         raise HTTPException(status_code=404, detail="Issue not found")
     return {"message": f"Issue {issue_id} deleted"}
 
+
+
 @router.post("/issues")
 def create_issue(
     message: str = Body(...),
     category: str = Body(...),
-    timestamp: str = Body(...),
-    status: str = Body(default="open")
+    status: str = Body(default="open"),
+    type_: str = Body(default="error")
 ):
     try:
-        cursor.execute("""
-            INSERT INTO issues (message, category, timestamp, status)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id;
-        """, (message, category, timestamp, status))
+        issue_hash = get_log_hash(message)
+        timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
+
+        issue_id = insert_issue(issue_hash, message, timestamp, category, status)
+        insert_event(issue_hash, message, timestamp, category="custom", type_=type_, issue_id=issue_id)
         db.commit()
-        return {"id": cursor.fetchone()[0]}
+        return {"message": "Issue inserted successfully"}
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating issue: {e}")
