@@ -111,5 +111,76 @@ def insert_parsed_logs_to_db(log_entries):
 
     db.commit()
 
+def delete_specified_issue(issue_id):
+    try:
+        cursor.execute("DELETE FROM events WHERE issue_id = %s;", (issue_id,))
+        
+        cursor.execute("DELETE FROM issues WHERE id = %s RETURNING id;", (issue_id,))
+        deleted = cursor.fetchone()
+        db.commit()
+
+        return deleted is not None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"DB error deleting issue {issue_id}: {e}")
+        raise
+
+def update_issue_status(issue_id, new_status):
+    if new_status not in ["open", "closed"]:
+        raise ValueError("Invalid status")
+
+    try:
+        cursor.execute(
+            "UPDATE issues SET status = %s WHERE id = %s RETURNING id;",
+            (new_status, issue_id)
+        )
+        updated = cursor.fetchone()
+        db.commit()
+        return updated is not None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"DB error updating issue status: {e}")
+        raise
+
+def get_issues(status=None):
+    if status and status not in ["open", "closed"]:
+        raise ValueError("Invalid status filter")
+    try:
+        if status:
+            cursor.execute("SELECT * FROM issues WHERE status = %s;", (status,))
+        else:
+            cursor.execute("SELECT * FROM issues;")
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": row.get("id"),
+                "message": row.get("message"),
+                "category": row.get("category", "unknown"),
+                "timestamp": row.get("timestamp", None),
+                "status": row.get("status", "open"),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.error(f"DB error fetching issues: {e}")
+        raise
+
+def get_issue_by_id(issue_id: int):
+    try:
+        cursor.execute("SELECT * FROM issues WHERE id = %s;", (issue_id,))
+        issue = cursor.fetchone()
+        if not issue:
+            return None
+        return {
+            "id": issue.get("id"),
+            "message": issue.get("message"),
+            "category": issue.get("category", "unknown"),
+            "timestamp": issue.get("timestamp", None),
+            "status": issue.get("status", "open"),
+        }
+    except Exception as e:
+        logger.error(f"DB error fetching issue by ID {issue_id}: {e}")
+        raise
+
 db = get_db_connection()
 cursor = db.cursor()
