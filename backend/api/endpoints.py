@@ -1,9 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
-from core.es import es, insert_logfile_to_es, fetch_log_entry, fetch_log_datetime, fetch_log_line_number
-from core.parser import parse_log_file, get_log_hash
+from core.db import db, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
+from core.es import insert_logfile_to_es, fetch_log_entry, fetch_log_datetime, fetch_log_line_number
+from core.parser import parse_log_file, generate_log_id_hash
 from core.logger import logger
 
 import json
@@ -118,7 +118,7 @@ def create_issue(
     type_: str = Body(default="error")
 ):
     try:
-        issue_hash = get_log_hash(message)
+        issue_hash = generate_log_id_hash(message)
         timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
 
         issue_id = insert_issue(issue_hash, message, timestamp, category, status)

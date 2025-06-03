@@ -1,22 +1,16 @@
 from datetime import datetime
 from .logger import logger
 import hashlib
+import base64
+import json
 import re
 import os
 
-def parse_line(line: str, line_number: int):
-    timestamp = None
+def parse_line(line: str, line_number: int, filename: str):
     category = None
-    log_type = None
-    message = line.strip()
-
-    timestamp_match = re.match(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):(\d+)\](\[\s*\d+\])?", line)
-    if timestamp_match:
-        try:
-            timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
-            message = line[timestamp_match.end():].strip()
-        except Exception as e:
-            logger.error(f"Error occured: {e}")
+    log_severity = None
+    timestamp, message = timestamp_match(line)
+    message = line.strip() if message is None else message
 
     category_match = re.search(r"(Log\w+):", line)
     if category_match:
@@ -24,19 +18,19 @@ def parse_line(line: str, line_number: int):
 
     line_lower = line.lower()
     if "error(s)" in line_lower:
-        log_type = None
+        log_severity = None
     elif "error" in line_lower:
         if "warning" in line_lower:
-            log_type = "warning"
+            log_severity = "warning"
         else:
-            log_type = "error"
+            log_severity = "error"
     elif "warning" in line_lower:
-        log_type = "warning"
+        log_severity = "warning"
     elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
-        log_type = "traceback"
+        log_severity = "traceback"
 
-    if log_type and message.startswith(log_type.capitalize()):
-        type_len = len(log_type)
+    if log_severity and message.startswith(log_severity.capitalize()):
+        type_len = len(log_severity)
         if message[type_len:type_len+1] in [":", " "]:
             message = message[type_len:].lstrip(": ").lstrip()
 
@@ -44,14 +38,23 @@ def parse_line(line: str, line_number: int):
         category_len = len(category)
         if message[category_len:category_len+1] in [":", " "]:
             message = message[category_len:].lstrip(": ").lstrip()
+    
+    basename = os.path.basename(filename)
+    log = {
+            "datetime": timestamp,
+            "filename": basename,
+            "line_number": line_number,
+            "line": line.strip()
+    }
+    log_id = generate_log_id_hash(log["datetime"], log["filename"], log["line_number"], log["line"])
 
     return {
-        "severity": log_type,
+        "severity": log_severity,
         "category": category,
         "message": message,
         "timestamp": timestamp,
         "line_number": line_number,
-        "hash": get_log_hash(line),
+        "hash": log_id,
     }
 
 
@@ -68,7 +71,7 @@ def parse_log_file(path: str) -> list:
     collecting_traceback = False
 
     for i, line in enumerate(lines):
-        parsed = parse_line(line, i + 1)
+        parsed = parse_line(line, i + 1, path)
         line_lower = line.lower()
 
         if "Error(s)" in line and "Warning(s)" in line:
@@ -124,6 +127,18 @@ def parse_log_file(path: str) -> list:
             entry["event_hash"] = get_event_hash(entry)
     return parsed_entries
 
+def timestamp_match(line):
+    timestamp = None
+    message = None
+    timestamp_match = re.match(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):(\d+)\](\[\s*\d+\])?", line)
+    if timestamp_match:
+        try:
+            timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
+            message = line[timestamp_match.end():].strip()
+        except Exception as e:
+            logger.error(f"Error occured: {e}")
+    return timestamp, message
+
 def get_log_hash(log):
     return hashlib.sha256(log.encode('utf-8')).hexdigest()
 
@@ -136,3 +151,17 @@ def get_event_hash(entry):
         for tb in entry["traceback"]:
             content += tb["message"]
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+def generate_log_id_hash(timestamp: str, filename: str, line_number: int, line: str) -> str:
+    payload = {
+        "datetime": timestamp.isoformat() if hasattr(timestamp, "isoformat") else timestamp,
+        "filename": filename,
+        "line_number": line_number,
+        "line": line,
+    }
+    raw_string = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+    sha1_digest = hashlib.sha1(raw_string.encode()).digest()
+    compact_digest = sha1_digest[:15]
+    b64_id = base64.urlsafe_b64encode(compact_digest).decode().rstrip('=')
+
+    return b64_id

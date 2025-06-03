@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS issues (
     id SERIAL PRIMARY KEY,
+    log_entry_id TEXT, -- HASH unified hash for multiple data sources
     category TEXT, -- Log type specific (LogEngine etc...)
     message TEXT,
     timestamp TIMESTAMP, 

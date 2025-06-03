@@ -1,5 +1,5 @@
 from .logger import logger
-from .parser import get_log_hash
+from .parser import get_log_hash, generate_log_id_hash
 import psycopg2
 import psycopg2.extras
 import os
