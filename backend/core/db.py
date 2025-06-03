@@ -165,5 +165,22 @@ def get_issues(status=None):
         logger.error(f"DB error fetching issues: {e}")
         raise
 
+def get_issue_by_id(issue_id: int):
+    try:
+        cursor.execute("SELECT * FROM issues WHERE id = %s;", (issue_id,))
+        issue = cursor.fetchone()
+        if not issue:
+            return None
+        return {
+            "id": issue.get("id"),
+            "message": issue.get("message"),
+            "category": issue.get("category", "unknown"),
+            "timestamp": issue.get("timestamp", None),
+            "status": issue.get("status", "open"),
+        }
+    except Exception as e:
+        logger.error(f"DB error fetching issue by ID {issue_id}: {e}")
+        raise
+
 db = get_db_connection()
 cursor = db.cursor()

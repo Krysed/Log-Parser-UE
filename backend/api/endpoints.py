@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues
+from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
 from core.es import es, insert_logfile_to_es
 from core.parser import parse_log_file
 from core.logger import logger
@@ -85,17 +85,10 @@ def get_log_datetime(log_id: str):
 
 @router.get("/issues/{issue_id}")
 def get_issue(issue_id: int):
-    cursor.execute("SELECT * FROM issues WHERE id = %s;", (issue_id,))
-    issue = cursor.fetchone()
+    issue = get_issue_by_id(issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
-    return {
-        "id": issue[0],
-        "message": issue[1],
-        "category": issue[2],
-        "timestamp": issue[3],
-        "status": issue[4]
-    }
+    return issue
 
 @router.get("/issues")
 def list_issues(status: Optional[str] = Query(None)):
