@@ -125,5 +125,22 @@ def delete_specified_issue(issue_id):
         logger.error(f"DB error deleting issue {issue_id}: {e}")
         raise
 
+def update_issue_status(issue_id, new_status):
+    if new_status not in ["open", "closed"]:
+        raise ValueError("Invalid status")
+
+    try:
+        cursor.execute(
+            "UPDATE issues SET status = %s WHERE id = %s RETURNING id;",
+            (new_status, issue_id)
+        )
+        updated = cursor.fetchone()
+        db.commit()
+        return updated is not None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"DB error updating issue status: {e}")
+        raise
+
 db = get_db_connection()
 cursor = db.cursor()

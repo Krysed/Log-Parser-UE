@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue
+from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status
 from core.es import es, insert_logfile_to_es
 from core.parser import parse_log_file
 from core.logger import logger
@@ -110,20 +110,17 @@ def list_issues(status: Optional[str] = Query(None)):
     issues = cursor.fetchall()
     return [{"id": i[0], "message": i[1], "category": i[2], "timestamp": i[3], "status": i[4]} for i in issues]
 
-router.patch("/issues/{issue_id}")
-def update_issue_status(
-    issue_id: int,
-    new_status: str = Body(..., embed=True)
-):
-    if new_status not in ["open", "closed"]:
-        raise HTTPException(status_code=400, detail="Invalid status")
-    cursor.execute("UPDATE issues SET status = %s WHERE id = %s RETURNING id;",
-                   (new_status, issue_id))
-    updated = cursor.fetchone()
-    db.commit()
-    if not updated:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    return {"message": f"Issue {issue_id} status updated to '{new_status}'"}
+@router.patch("/issues/{issue_id}")
+def patch_issue_status(issue_id: int, new_status: str = Body(..., embed=True)):
+    try:
+        updated = update_issue_status(issue_id, new_status)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        return {"message": f"Issue {issue_id} status updated to '{new_status}'"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to update issue status")
 
 @router.delete("/issues/{issue_id}")
 def delete_issue(issue_id: int = Path(...)):
