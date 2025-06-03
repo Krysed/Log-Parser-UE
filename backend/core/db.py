@@ -111,5 +111,19 @@ def insert_parsed_logs_to_db(log_entries):
 
     db.commit()
 
+def delete_specified_issue(issue_id):
+    try:
+        cursor.execute("DELETE FROM events WHERE issue_id = %s;", (issue_id,))
+        
+        cursor.execute("DELETE FROM issues WHERE id = %s RETURNING id;", (issue_id,))
+        deleted = cursor.fetchone()
+        db.commit()
+
+        return deleted is not None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"DB error deleting issue {issue_id}: {e}")
+        raise
+
 db = get_db_connection()
 cursor = db.cursor()

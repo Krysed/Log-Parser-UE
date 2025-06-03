@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event
+from core.db import db, cursor, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue
 from core.es import es, insert_logfile_to_es
 from core.parser import parse_log_file
 from core.logger import logger
@@ -127,14 +127,13 @@ def update_issue_status(
 
 @router.delete("/issues/{issue_id}")
 def delete_issue(issue_id: int = Path(...)):
-    cursor.execute("DELETE FROM issues WHERE id = %s RETURNING id;", (issue_id,))
-    deleted = cursor.fetchone()
-    db.commit()
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    return {"message": f"Issue {issue_id} deleted"}
-
-
+    try:
+        deleted = delete_specified_issue(issue_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        return {"message": f"Issue {issue_id} and related events deleted"}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to delete issue and events")
 
 @router.post("/issues")
 def create_issue(
