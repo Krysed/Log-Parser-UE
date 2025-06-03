@@ -23,28 +23,23 @@ def insert_issue(issue_hash, message, timestamp, category, status="open"):
         ON CONFLICT (hash) DO NOTHING;
     """, (issue_hash, message, timestamp, category, status))
 
-def insert_event(event_hash, message, timestamp, category, type_):
-    issue_id = None
-    if type_ == "error":
-        cursor.execute("SELECT id FROM issues WHERE hash = %s", (event_hash,))
-        row = cursor.fetchone()
-        if row:
-            issue_id = row["id"]
+def insert_event(event_hash, message, timestamp, category, type_, issue_id=None):
+    # Sprawdź, czy event już istnieje
+    cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
+    existing = cursor.fetchone()
+    if existing:
+        return existing["id"], False  # Event już istnieje, nic nie rób
 
+    # Jeśli nie istnieje, wstaw nowy z issue_id
     cursor.execute("""
         INSERT INTO events (hash, message, timestamp, category, type, issue_id)
         VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (hash) DO NOTHING
-        RETURNING id
     """, (event_hash, message, timestamp, category, type_, issue_id))
-    row = cursor.fetchone()
 
-    if row:
-        return row["id"], True
-    else:
-        cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
-        row = cursor.fetchone()
-        return row["id"] if row else None, False
+    # Teraz pobierz ID nowo wstawionego eventu
+    cursor.execute("SELECT id FROM events WHERE hash = %s", (event_hash,))
+    row = cursor.fetchone()
+    return row["id"], True if row else (None, False)
 
 
 def insert_traceback(event_id, message, line_number, hash):
@@ -71,33 +66,36 @@ def insert_parsed_logs_to_db(log_entries):
             is_error_type = entry.get("type") == "error"
 
             if is_error_type or traceback_exists:
+                insert_issue(
+                    issue_hash=entry["issue_hash"],
+                    message=entry["message"],
+                    timestamp=entry["timestamp"],
+                    category=entry["category"],
+                    status="open"
+                )
+
+                cursor.execute("SELECT id FROM issues WHERE hash = %s", (entry["issue_hash"],))
+                issue_row = cursor.fetchone()
+                issue_id = issue_row["id"] if issue_row else None
+
                 event_id, is_new_event = insert_event(
                     event_hash=entry["event_hash"],
                     message=entry["message"],
                     timestamp=entry["timestamp"],
                     category=entry["category"],
-                    type_="error"
+                    type_="error",
+                    issue_id=issue_id
                 )
 
-                if not event_id:
-                    logger.error(f"Failed to insert or fetch event for error log at line {entry.get('line_number')}, skipping traceback insert.")
-                else:
-                    if is_new_event:
-                        insert_issue(
-                            issue_hash=entry["issue_hash"],
-                            message=entry["message"],
-                            timestamp=entry["timestamp"],
-                            category=entry["category"],
-                            status="open"
+                if is_new_event and event_id:
+                    for i, tb_message in enumerate(entry.get("traceback", [])):
+                        insert_traceback(
+                            event_id=event_id,
+                            message=tb_message["message"] if isinstance(tb_message, dict) else str(tb_message),
+                            line_number=entry.get("line_number", None) + i if entry.get("line_number") is not None else None,
+                            hash=get_log_hash(tb_message["message"])
                         )
-                        for i, tb_message in enumerate(entry.get("traceback", [])):
-                            insert_traceback(
-                                event_id=event_id,
-                                message=tb_message["message"] if isinstance(tb_message, dict) else str(tb_message),
-                                line_number=entry.get("line_number", None) + i if entry.get("line_number") is not None else None,
-                                hash=get_log_hash(tb_message["message"])
-                            )
-                            logger.debug(f"Inserted traceback line for error_id={event_id}")
+                        logger.debug(f"Inserted traceback line for error_id={event_id}")
 
             elif entry["type"] == "warning":
                 insert_event(
@@ -105,11 +103,13 @@ def insert_parsed_logs_to_db(log_entries):
                     message=entry["message"],
                     timestamp=entry["timestamp"],
                     category=entry["category"],
-                    type_="warning"
+                    type_="warning",
+                    issue_id=None
                 )
 
         except Exception as e:
-            logger.error(f"DB insert failed at line {entry.get('line_number')}: {e}")
+            logger.error(f"Caught exception: {e}\nDB insert failed at line {entry.get('line_number')}")
+            db.rollback()
             continue
 
     db.commit()

@@ -808,7 +808,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT * FROM error_traceback;",
+          "rawSql": "SELECT \n    e.issue_id,\n    et.message,\n    et.line_number,\n    et.error_id,\n    et.hash,\n    et.id\nFROM error_traceback et\nJOIN events e ON et.error_id = e.id;\n",
           "refId": "A",
           "sql": {
             "columns": [
