@@ -64,6 +64,31 @@
               "options": "message"
             },
             "properties": []
+          },
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "value",
+                  "Errors"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
           }
         ]
       },
@@ -110,7 +135,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT 'Tracebacks' AS label, COUNT(*) AS value FROM error_traceback\nUNION ALL\nSELECT 'Warnings' AS label, COUNT(*) AS value FROM events WHERE severity = 'warning'\nUNION ALL\nSELECT 'Errors' AS label, COUNT(*) AS value FROM events WHERE severity = 'error'\n",
+          "rawSql": "SELECT 'Tracebacks' AS label, COUNT(*) AS value FROM error_traceback\nUNION ALL\nSELECT 'Warnings' AS label, COUNT(*) AS value FROM issues WHERE severity = 'warning'\nUNION ALL\nSELECT 'Errors' AS label, COUNT(*) AS value FROM issues WHERE severity = 'error'\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -414,7 +439,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as total FROM events WHERE severity = 'warning';\n",
+          "rawSql": "SELECT COUNT(*) as total FROM issues WHERE severity = 'warning';\n",
           "refId": "B",
           "sql": {
             "columns": [
@@ -615,7 +640,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 72
+                "value": 60
               }
             ]
           },
@@ -628,6 +653,18 @@
               {
                 "id": "custom.width",
                 "value": 1091
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 92
               }
             ]
           }
@@ -663,7 +700,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT id, category, message, timestamp FROM issues WHERE status = 'open' ORDER BY id DESC;",
+          "rawSql": "SELECT id, log_entry_id, severity, category, message FROM issues WHERE status = 'open' ORDER BY id DESC;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -787,6 +824,18 @@
                 "value": 85
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "log_entry_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 192
+              }
+            ]
           }
         ]
       },
@@ -820,7 +869,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT \n    e.issue_id,\n    et.message,\n    et.line_number,\n    et.error_id,\n    et.hash,\n    et.id\nFROM error_traceback et\nJOIN events e ON et.error_id = e.id;\n",
+          "rawSql": "SELECT \n    et.error_id,\n    e.log_entry_id,\n    et.message,\n    et.line_number\nFROM error_traceback et\nJOIN issues e ON et.error_id = e.id;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -941,7 +990,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT id, category, message, timestamp FROM events WHERE severity = 'warning' ORDER BY id DESC;",
+          "rawSql": "SELECT id, log_entry_id, category, message FROM issues WHERE severity = 'warning' ORDER BY id DESC;\n",
           "refId": "A",
           "sql": {
             "columns": [

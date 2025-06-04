@@ -46,7 +46,7 @@ def parse_line(line: str, line_number: int, filename: str):
             "line_number": line_number,
             "line": line.strip()
     }
-    log_id = generate_log_id_hash(log["datetime"], log["filename"], log["line_number"], log["line"])
+    log_entry_id = generate_log_id_hash(log["datetime"], log["filename"], log["line_number"], log["line"])
 
     return {
         "severity": log_severity,
@@ -54,7 +54,7 @@ def parse_line(line: str, line_number: int, filename: str):
         "message": message,
         "timestamp": timestamp,
         "line_number": line_number,
-        "hash": log_id,
+        "log_entry_id": log_entry_id,
     }
 
 
@@ -82,30 +82,62 @@ def parse_log_file(path: str) -> list:
             traceback_array = [parsed]
             continue
 
+        # if collecting_traceback:
+        #     if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
+        #         collecting_traceback = False
+
+        #         if "commandletexception" in traceback_array[0]["message"].lower():
+        #             issue_message = traceback_array[0]["message"]
+        #         else:
+        #             issue_message = traceback_array[-1]["message"]
+
+        #         collected_traceback = {
+        #             "severity": "error",
+        #             "message": issue_message,
+        #             "timestamp": traceback_array[-1]["timestamp"],
+        #             "category": traceback_array[-1].get("category"),
+        #             "line_number": i + 1,
+        #             "traceback": [entry for entry in traceback_array],
+        #         }
+        #         logger.debug(f"current error: {current_error}")
+        #         parsed_entries.append(collected_traceback)
+        #         traceback_array = []
+        #         continue
+        #     else:
+        #         traceback_array.append(parsed)
+        #         continue
         if collecting_traceback:
-            if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
+            # Sprawdź, czy zakończyć zbieranie tracebacka
+            if (
+                line.strip() == ""
+                or ("error" not in line_lower and not line_lower.strip().startswith("at "))
+            ):
                 collecting_traceback = False
 
-                if "commandletexception" in traceback_array[0]["message"].lower():
-                    issue_message = traceback_array[0]["message"]
-                else:
-                    issue_message = traceback_array[-1]["message"]
+                if traceback_array:
+                    # Wybierz wiadomość błędu
+                    if "commandletexception" in traceback_array[0]["message"].lower():
+                        issue_message = traceback_array[0]["message"]
+                    else:
+                        issue_message = traceback_array[-1]["message"]
 
-                collected_traceback = {
-                    "severity": "error",
-                    "message": issue_message,
-                    "timestamp": traceback_array[-1]["timestamp"],
-                    "category": traceback_array[-1].get("category"),
-                    "line_number": i + 1,
-                    "traceback": [entry for entry in traceback_array],
-                }
-                logger.debug(f"current error: {current_error}")
-                parsed_entries.append(collected_traceback)
-                traceback_array = []
+                    collected_traceback = {
+                        "severity": "error",
+                        "message": issue_message,
+                        "timestamp": traceback_array[-1]["timestamp"],
+                        "category": traceback_array[-1].get("category"),
+                        "line_number": traceback_array[-1]["line_number"],
+                        "traceback": traceback_array,
+                        "log_entry_id": traceback_array[-1].get("log_entry_id"),  # <- KLUCZOWE
+                    }
+
+                    parsed_entries.append(collected_traceback)
+                    traceback_array = []
+
+                continue  # <- Pomija dalsze przetwarzanie tej samej linii
             else:
                 traceback_array.append(parsed)
                 continue
-
 
         if parsed["severity"] == "error":
             if current_error:
@@ -122,8 +154,8 @@ def parse_log_file(path: str) -> list:
         parsed_entries.append(current_error)
 
     for entry in parsed_entries:
+        entry["message_hash"] = get_log_hash(entry["message"])
         if entry["severity"] == "error":
-            entry["issue_hash"] = get_log_hash(entry["message"])
             content = entry["message"]
             if "traceback" in entry:
                 for tb in entry["traceback"]:

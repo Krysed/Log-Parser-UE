@@ -1,9 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Body
 from typing import Optional
 from datetime import datetime, timezone
-from core.db import db, insert_parsed_logs_to_db, insert_issue, insert_event, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
+from core.db import db, insert_parsed_logs_to_db, insert_issue, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
 from core.es import insert_logfile_to_es, fetch_log_entry, fetch_log_datetime, fetch_log_line_number
-from core.parser import parse_log_file, generate_log_id_hash
+from core.parser import parse_log_file, generate_log_id_hash, get_log_hash
 from core.logger import logger
 
 import json
@@ -42,7 +42,7 @@ async def collect_logfile(file: UploadFile = File(...)):
             f.write(line.encode("utf-8"))
 
     insert_parsed_logs_to_db(parsed_entries)
-    insert_logfile_to_es(filename)
+    # insert_logfile_to_es(filename)
     return {
         "filename": basename,
         "parsed": len(parsed_entries)
@@ -106,7 +106,7 @@ def delete_issue(issue_id: int = Path(...)):
         deleted = delete_specified_issue(issue_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Issue not found")
-        return {"message": f"Issue {issue_id} and related events deleted"}
+        return {"message": f"Issue {issue_id} deleted."}
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to delete issue and events")
 
@@ -115,16 +115,16 @@ def create_issue(
     message: str = Body(...),
     category: str = Body(...),
     status: str = Body(default="open"),
-    severity: str = Body(default="error")
+    severity: str = Body(default="error"),
+    line_number: Optional[int] = Body(default=None)
 ):
     try:
-        issue_hash, _ = generate_log_id_hash(message)
+        log_entry_id = generate_log_id_hash(message)
         timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
 
-        issue_id = insert_issue(issue_hash, message, timestamp, category, status)
-        insert_event(issue_hash, message, timestamp, category="custom", severity=severity, issue_id=issue_id)
+        issue_id, _ = insert_issue(get_log_hash(message), log_entry_id, message, timestamp, category, severity, line_number, status)
         db.commit()
-        return {"message": "Issue inserted successfully"}
+        return {"message": f"Issue {log_entry_id} - inserted successfully"}
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating issue: {e}")
