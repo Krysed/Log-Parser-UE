@@ -123,8 +123,12 @@ def parse_log_file(path: str) -> list:
 
     for entry in parsed_entries:
         if entry["severity"] == "error":
-            entry["issue_hash"] = get_issue_hash(entry)
-            entry["event_hash"] = get_event_hash(entry)
+            entry["issue_hash"] = get_log_hash(entry["message"])
+            content = entry["message"]
+            if "traceback" in entry:
+                for tb in entry["traceback"]:
+                    content += tb["message"]
+                entry["event_hash"] = get_log_hash(content)
     return parsed_entries
 
 def timestamp_match(line):
@@ -141,16 +145,6 @@ def timestamp_match(line):
 
 def get_log_hash(log):
     return hashlib.sha256(log.encode('utf-8')).hexdigest()
-
-def get_issue_hash(entry):
-    return hashlib.sha256(entry["message"].encode("utf-8")).hexdigest()
-
-def get_event_hash(entry):
-    content = entry["message"]
-    if "traceback" in entry:
-        for tb in entry["traceback"]:
-            content += tb["message"]
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 def generate_log_id_hash(timestamp: str, filename: str, line_number: int, line: str) -> str:
     payload = {

@@ -115,14 +115,14 @@ def create_issue(
     message: str = Body(...),
     category: str = Body(...),
     status: str = Body(default="open"),
-    type_: str = Body(default="error")
+    severity: str = Body(default="error")
 ):
     try:
-        issue_hash = generate_log_id_hash(message)
+        issue_hash, _ = generate_log_id_hash(message)
         timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
 
         issue_id = insert_issue(issue_hash, message, timestamp, category, status)
-        insert_event(issue_hash, message, timestamp, category="custom", type_=type_, issue_id=issue_id)
+        insert_event(issue_hash, message, timestamp, category="custom", severity=severity, issue_id=issue_id)
         db.commit()
         return {"message": "Issue inserted successfully"}
     except Exception as e:

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS issues (
     timestamp TIMESTAMP, 
     line_number INT,
     hash TEXT UNIQUE,
-    status TEXT DEFAULT 'open' -- 'open', 'closed', 'resolved', etc.
+    status TEXT DEFAULT 'open' -- 'open' or 'closed'
 );
 
 CREATE TABLE IF NOT EXISTS events (
