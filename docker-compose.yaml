@@ -12,9 +12,9 @@ services:
     networks:
       - app_network
 
-  frontend:
-    build: ./frontend
-    container_name: frontend-logs-app
+  nginx:
+    build: ./nginx
+    container_name: nginx-logs-app
     depends_on:
       - grafana
       - backend
