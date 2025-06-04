@@ -1,22 +1,16 @@
 from datetime import datetime
 from .logger import logger
 import hashlib
+import base64
+import json
 import re
 import os
 
-def parse_line(line: str, line_number: int):
-    timestamp = None
+def parse_line(line: str, line_number: int, filename: str):
     category = None
-    log_type = None
-    message = line.strip()
-
-    timestamp_match = re.match(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):(\d+)\](\[\s*\d+\])?", line)
-    if timestamp_match:
-        try:
-            timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
-            message = line[timestamp_match.end():].strip()
-        except Exception as e:
-            logger.error(f"Error occured: {e}")
+    log_severity = None
+    timestamp, message = timestamp_match(line)
+    message = line.strip() if message is None else message
 
     category_match = re.search(r"(Log\w+):", line)
     if category_match:
@@ -24,19 +18,19 @@ def parse_line(line: str, line_number: int):
 
     line_lower = line.lower()
     if "error(s)" in line_lower:
-        log_type = None
+        log_severity = None
     elif "error" in line_lower:
         if "warning" in line_lower:
-            log_type = "warning"
+            log_severity = "warning"
         else:
-            log_type = "error"
+            log_severity = "error"
     elif "warning" in line_lower:
-        log_type = "warning"
+        log_severity = "warning"
     elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
-        log_type = "traceback"
+        log_severity = "traceback"
 
-    if log_type and message.startswith(log_type.capitalize()):
-        type_len = len(log_type)
+    if log_severity and message.startswith(log_severity.capitalize()):
+        type_len = len(log_severity)
         if message[type_len:type_len+1] in [":", " "]:
             message = message[type_len:].lstrip(": ").lstrip()
 
@@ -44,14 +38,23 @@ def parse_line(line: str, line_number: int):
         category_len = len(category)
         if message[category_len:category_len+1] in [":", " "]:
             message = message[category_len:].lstrip(": ").lstrip()
+    
+    basename = os.path.basename(filename)
+    log = {
+            "datetime": timestamp,
+            "filename": basename,
+            "line_number": line_number,
+            "line": line.strip()
+    }
+    log_entry_id = generate_log_id_hash(log["datetime"], log["filename"], log["line_number"], log["line"])
 
     return {
-        "type": log_type,
+        "severity": log_severity,
         "category": category,
         "message": message,
         "timestamp": timestamp,
         "line_number": line_number,
-        "hash": get_log_hash(line),
+        "log_entry_id": log_entry_id,
     }
 
 
@@ -68,7 +71,7 @@ def parse_log_file(path: str) -> list:
     collecting_traceback = False
 
     for i, line in enumerate(lines):
-        parsed = parse_line(line, i + 1)
+        parsed = parse_line(line, i + 1, path)
         line_lower = line.lower()
 
         if "Error(s)" in line and "Warning(s)" in line:
@@ -80,36 +83,41 @@ def parse_log_file(path: str) -> list:
             continue
 
         if collecting_traceback:
-            if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
+            if (
+                line.strip() == ""
+                or ("error" not in line_lower and not line_lower.strip().startswith("at "))
+            ):
                 collecting_traceback = False
 
-                if "commandletexception" in traceback_array[0]["message"].lower():
-                    issue_message = traceback_array[0]["message"]
-                else:
-                    issue_message = traceback_array[-1]["message"]
+                if traceback_array:
+                    if "commandletexception" in traceback_array[0]["message"].lower():
+                        issue_message = traceback_array[0]["message"]
+                    else:
+                        issue_message = traceback_array[-1]["message"]
 
-                collected_traceback = {
-                    "type": "error",
-                    "message": issue_message,
-                    "timestamp": traceback_array[-1]["timestamp"],
-                    "category": traceback_array[-1].get("category"),
-                    "line_number": i + 1,
-                    "traceback": [entry for entry in traceback_array],
-                }
-                logger.debug(f"current error: {current_error}")
-                parsed_entries.append(collected_traceback)
-                traceback_array = []
+                    collected_traceback = {
+                        "severity": "error",
+                        "message": issue_message,
+                        "timestamp": traceback_array[-1]["timestamp"],
+                        "category": traceback_array[-1].get("category"),
+                        "line_number": traceback_array[-1]["line_number"],
+                        "traceback": traceback_array,
+                        "log_entry_id": traceback_array[-1].get("log_entry_id"),
+                    }
+
+                    parsed_entries.append(collected_traceback)
+                    traceback_array = []
+                continue
             else:
                 traceback_array.append(parsed)
                 continue
 
-
-        if parsed["type"] == "error":
+        if parsed["severity"] == "error":
             if current_error:
                 parsed_entries.append(current_error)
             current_error = parsed
             current_error["traceback"] = []
-        elif parsed["type"] == "warning":
+        elif parsed["severity"] == "warning":
             if current_error:
                 parsed_entries.append(current_error)
                 current_error = None
@@ -119,20 +127,40 @@ def parse_log_file(path: str) -> list:
         parsed_entries.append(current_error)
 
     for entry in parsed_entries:
-        if entry["type"] == "error":
-            entry["issue_hash"] = get_issue_hash(entry)
-            entry["event_hash"] = get_event_hash(entry)
+        entry["message_hash"] = get_log_hash(entry["message"])
+        if entry["severity"] == "error":
+            content = entry["message"]
+            if "traceback" in entry:
+                for tb in entry["traceback"]:
+                    content += tb["message"]
+                entry["event_hash"] = get_log_hash(content)
     return parsed_entries
+
+def timestamp_match(line):
+    timestamp = None
+    message = None
+    timestamp_match = re.match(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):(\d+)\](\[\s*\d+\])?", line)
+    if timestamp_match:
+        try:
+            timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
+            message = line[timestamp_match.end():].strip()
+        except Exception as e:
+            logger.error(f"Error occured: {e}")
+    return timestamp, message
 
 def get_log_hash(log):
     return hashlib.sha256(log.encode('utf-8')).hexdigest()
 
-def get_issue_hash(entry):
-    return hashlib.sha256(entry["message"].encode("utf-8")).hexdigest()
+def generate_log_id_hash(timestamp: str, filename: str, line_number: int, line: str) -> str:
+    payload = {
+        "datetime": timestamp.isoformat() if hasattr(timestamp, "isoformat") else timestamp,
+        "filename": filename,
+        "line_number": line_number,
+        "line": line,
+    }
+    raw_string = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+    sha1_digest = hashlib.sha1(raw_string.encode()).digest()
+    compact_digest = sha1_digest[:15]
+    b64_id = base64.urlsafe_b64encode(compact_digest).decode().rstrip('=')
 
-def get_event_hash(entry):
-    content = entry["message"]
-    if "traceback" in entry:
-        for tb in entry["traceback"]:
-            content += tb["message"]
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return b64_id

@@ -1,6 +1,7 @@
 from elasticsearch import Elasticsearch
 from datetime import datetime, timezone
 from .logger import logger
+from .parser import timestamp_match, generate_log_id_hash
 import os
 
 DEFAULT_INDEX="logs"
@@ -11,14 +12,24 @@ def get_es_connection():
 def insert_logfile_to_es(logfile):
     with open(logfile, 'r') as f:
         lines = f.readlines()
+    basename = os.path.basename(logfile)
     for i, line in enumerate(lines):
+        timestamp , _= timestamp_match(line)
+        log = {
+            "datetime": timestamp,
+            "filename": basename,
+            "line_number": i + 1,
+            "line": line.strip()
+        }
+        log_id = generate_log_id_hash(log["datetime"], log["filename"], log["line_number"], log["line"])
+
         doc = {
             "line": line.strip(),
             "line_number": i + 1,
-            "filename": os.path.basename(logfile),
+            "filename": basename,
             "@timestamp": datetime.now(timezone.utc).isoformat()
         }
-        es.index(index=DEFAULT_INDEX, body=doc)
+        es.index(index=DEFAULT_INDEX, id=log_id, body=doc)
 
 def fetch_log_entry(log_entry_id: str):
     try:
