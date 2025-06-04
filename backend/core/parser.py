@@ -82,32 +82,7 @@ def parse_log_file(path: str) -> list:
             traceback_array = [parsed]
             continue
 
-        # if collecting_traceback:
-        #     if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
-        #         collecting_traceback = False
-
-        #         if "commandletexception" in traceback_array[0]["message"].lower():
-        #             issue_message = traceback_array[0]["message"]
-        #         else:
-        #             issue_message = traceback_array[-1]["message"]
-
-        #         collected_traceback = {
-        #             "severity": "error",
-        #             "message": issue_message,
-        #             "timestamp": traceback_array[-1]["timestamp"],
-        #             "category": traceback_array[-1].get("category"),
-        #             "line_number": i + 1,
-        #             "traceback": [entry for entry in traceback_array],
-        #         }
-        #         logger.debug(f"current error: {current_error}")
-        #         parsed_entries.append(collected_traceback)
-        #         traceback_array = []
-        #         continue
-        #     else:
-        #         traceback_array.append(parsed)
-        #         continue
         if collecting_traceback:
-            # Sprawdź, czy zakończyć zbieranie tracebacka
             if (
                 line.strip() == ""
                 or ("error" not in line_lower and not line_lower.strip().startswith("at "))
@@ -115,7 +90,6 @@ def parse_log_file(path: str) -> list:
                 collecting_traceback = False
 
                 if traceback_array:
-                    # Wybierz wiadomość błędu
                     if "commandletexception" in traceback_array[0]["message"].lower():
                         issue_message = traceback_array[0]["message"]
                     else:
@@ -128,13 +102,12 @@ def parse_log_file(path: str) -> list:
                         "category": traceback_array[-1].get("category"),
                         "line_number": traceback_array[-1]["line_number"],
                         "traceback": traceback_array,
-                        "log_entry_id": traceback_array[-1].get("log_entry_id"),  # <- KLUCZOWE
+                        "log_entry_id": traceback_array[-1].get("log_entry_id"),
                     }
 
                     parsed_entries.append(collected_traceback)
                     traceback_array = []
-
-                continue  # <- Pomija dalsze przetwarzanie tej samej linii
+                continue
             else:
                 traceback_array.append(parsed)
                 continue

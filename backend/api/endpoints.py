@@ -21,32 +21,35 @@ async def health_check():
 # Accept the incoming logfiles
 @router.post("/logs")
 async def collect_logfile(file: UploadFile = File(...)):
-    content = await file.read()
-    file_basename = (file.filename).split(os.path.sep)
-    if len(file_basename) > 1:
-        file.filename = file_basename[-1]
-    filename = os.path.join(LOG_DIR, file.filename)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    
-    with open(filename, "wb") as f:
-        f.write(content)
-    logger.info(f"Uploaded file: {filename}")
+    try:
+        content = await file.read()
+        file_basename = (file.filename).split(os.path.sep)
+        if len(file_basename) > 1:
+            file.filename = file_basename[-1]
+        filename = os.path.join(LOG_DIR, file.filename)
+        os.makedirs(LOG_DIR, exist_ok=True)
+        
+        with open(filename, "wb") as f:
+            f.write(content)
+        logger.info(f"Uploaded file: {filename}")
 
-    parsed_entries = parse_log_file(filename)
-    logger.info(f"Parsed logfile: {file.filename}")
+        parsed_entries = parse_log_file(filename)
+        logger.info(f"Parsed logfile: {file.filename}")
 
-    basename = os.path.basename(filename)
-    with open(os.path.join(LOG_DIR, f"parsed_{basename}"), "wb") as f:
-        for entry in parsed_entries:
-            line = json.dumps(entry, default=str) + "\n"
-            f.write(line.encode("utf-8"))
+        basename = os.path.basename(filename)
+        with open(os.path.join(LOG_DIR, f"parsed_{basename}"), "wb") as f:
+            for entry in parsed_entries:
+                line = json.dumps(entry, default=str) + "\n"
+                f.write(line.encode("utf-8"))
 
-    insert_parsed_logs_to_db(parsed_entries)
-    # insert_logfile_to_es(filename)
-    return {
-        "filename": basename,
-        "parsed": len(parsed_entries)
-    }
+        insert_parsed_logs_to_db(parsed_entries)
+        insert_logfile_to_es(filename)
+        return {
+            "filename": basename,
+            "parsed": len(parsed_entries)
+        }
+    except Exception as e:
+        logger.error(f"Caught exception: {e}")
 
 # Elasticsearch
 @router.get("/logs/{log_entry_id}")

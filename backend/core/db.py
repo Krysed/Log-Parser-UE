@@ -1,5 +1,5 @@
 from .logger import logger
-from .parser import get_log_hash, generate_log_id_hash
+from .parser import get_log_hash
 import psycopg2
 import psycopg2.extras
 import os
@@ -69,7 +69,6 @@ def insert_parsed_logs_to_db(log_entries):
         except Exception as e:
             logger.error(f"Caught exception: {e}\nDB insert failed at line {entry.get('line_number')}")
             db.rollback()
-            continue
 
     db.commit()
 
