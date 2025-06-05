@@ -118,7 +118,7 @@ def create_issue(
     message: str = Body(...),
     category: str = Body(...),
     status: str = Body(default="open"),
-    severity: str = Body(default="error"),
+    severity: str = Body(default="Error"),
     line_number: Optional[int] = Body(default=None)
 ):
     try:
