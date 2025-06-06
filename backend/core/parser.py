@@ -32,12 +32,14 @@ def parse_line(line: str, line_number: int, filename: str):
     if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
         message = parse_retry_message(message)
     message = remove_bracket_prefixes(message)
+    message = cut_after_timestamp_block(message)
 
     if category:
         message = strip_prefix_if_present(message, category)
     if log_severity:
         message = strip_prefix_if_present(message, log_severity)
 
+    message = remove_trailing_log_marker(message)
 
     basename = os.path.basename(filename)
     log = {
@@ -189,6 +191,7 @@ def parse_category_from_line(line: str) -> str | None:
 
     return None
 
+
 # ??
 # def remove_bracket_prefixes(message: str) -> str:
 #     while message.startswith('['):
@@ -197,6 +200,15 @@ def parse_category_from_line(line: str) -> str | None:
 #             break
 #         message = message[end_idx+1:].lstrip()
 #     return message
+
+def cut_after_timestamp_block(message: str) -> str:
+    match = re.search(r"\[\d+s:\d+ms:\d+us\]", message)
+    if match:
+        return message[match.end():].lstrip()
+    return message
+
+def remove_trailing_log_marker(message: str) -> str:
+    return re.sub(r"\s*\[log\]$", "", message, flags=re.IGNORECASE).strip()
 
 def remove_bracket_prefixes(message: str) -> str:
     while True:
