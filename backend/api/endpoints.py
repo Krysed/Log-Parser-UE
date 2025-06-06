@@ -74,9 +74,9 @@ def get_log_datetime(log_entry_id: str):
     return {"datetime": datetime_value}
 
 # Postgres 
-@router.get("/issues/{issue_id}")
-def get_issue(issue_id: int):
-    issue = get_issue_by_id(issue_id)
+@router.get("/issues/{log_entry_id}")
+def get_issue(log_entry_id: str):
+    issue = get_issue_by_id(log_entry_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
     return issue
@@ -91,25 +91,25 @@ def list_issues(status: Optional[str] = Query(None)):
         logger.error(f"API error: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve issues")
 
-@router.patch("/issues/{issue_id}")
-def patch_issue_status(issue_id: int, new_status: str = Body(..., embed=True)):
+@router.patch("/issues/{log_entry_id}")
+def patch_issue_status(log_entry_id: str, new_status: str = Body(..., embed=True)):
     try:
-        updated = update_issue_status(issue_id, new_status)
+        updated = update_issue_status(log_entry_id, new_status)
         if not updated:
             raise HTTPException(status_code=404, detail="Issue not found")
-        return {"message": f"Issue {issue_id} status updated to '{new_status}'"}
+        return {"message": f"Issue {log_entry_id} status updated to '{new_status}'"}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to update issue status")
 
-@router.delete("/issues/{issue_id}")
-def delete_issue(issue_id: int = Path(...)):
+@router.delete("/issues/{log_entry_id}")
+def delete_issue(log_entry_id: str = Path(...)):
     try:
-        deleted = delete_specified_issue(issue_id)
+        deleted = delete_specified_issue(log_entry_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Issue not found")
-        return {"message": f"Issue {issue_id} deleted."}
+        return {"message": f"Issue {log_entry_id} deleted."}
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to delete issue and events")
 
