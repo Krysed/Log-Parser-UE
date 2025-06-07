@@ -77,6 +77,4 @@ if __name__ == "__main__":
         clean_parsed_logfile_contents()
     elif switches.insert_logfile:
         insert_log(switches.insert_logfile)
-    if switches is None:
-        os.system("docker-compose up --build")
     
