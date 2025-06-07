@@ -14,20 +14,28 @@ def parse_line(line: str, line_number: int, filename: str):
     timestamp, message = timestamp_match(line)
     message = line.strip() if message is None else message
 
-    category = parse_category_from_line(line)
-
-    line_lower = line.lower()
-    if "error(s)" in line_lower or "warning(s)" in line_lower:
-        log_severity = None
-    elif "error" in line_lower:
-        if "warning" in line_lower:
+    nested_category, nested_severity, nested_message = extract_nested_log_info(line)
+    if nested_category and nested_severity and nested_message:
+        category = nested_category
+        log_severity = nested_severity
+        message = nested_message
+    else:
+        category = parse_category_from_line(line)
+        line_lower = line.lower()
+        if "error(s)" in line_lower or "warning(s)" in line_lower:
+            log_severity = None
+        elif "error" in line_lower:
+            if "warning" in line_lower:
+                log_severity = "Warning"
+            else:
+                log_severity = "Error"
+        elif "warning" in line_lower:
             log_severity = "Warning"
-        else:
-            log_severity = "Error"
-    elif "warning" in line_lower:
-        log_severity = "Warning"
-    elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
-        log_severity = "Traceback"
+        elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
+            log_severity = "Traceback"
+        message = remove_bracket_prefixes(message) #TODO : TEST IF WORKS
+
+    # category = parse_category_from_line(line)
 
     if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
         message = parse_retry_message(message)
@@ -78,7 +86,7 @@ def parse_log_file(path: str) -> list:
             continue
         line_lower = line.lower()
 
-        if "Error(s)" in line and "Warning(s)" in line:
+        if "Error(s)" in line and "Warning(s)" in line: # This kind of line we skip
             continue
 
         if ("traceback (most recent call last)" in line_lower or "commandletexception" in line_lower or "btraceack" in line_lower):
@@ -87,10 +95,7 @@ def parse_log_file(path: str) -> list:
             continue
 
         if collecting_traceback:
-            if (
-                line.strip() == ""
-                or ("error" not in line_lower and not line_lower.strip().startswith("at "))
-            ):
+            if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
                 collecting_traceback = False
 
                 if traceback_array:
@@ -189,17 +194,34 @@ def parse_category_from_line(line: str) -> str | None:
             if part.startswith("Log") and part[3:].isalpha():
                 return part
 
+    lowered = line.lower()
+    if "warning:" in lowered:
+        try:
+            after = lowered.split("warning:")[1].strip()
+            if after:
+                words = after.split()
+                return " ".join(words[:2]).capitalize()
+        except IndexError:
+            pass
+    if "error:" in lowered:
+        try:
+            after = lowered.split("error:")[1].strip()
+            if after:
+                words = after.split()
+                return " ".join(words[:2]).capitalize()
+        except IndexError:
+            pass
+
     return None
 
-
-# ??
-# def remove_bracket_prefixes(message: str) -> str:
-#     while message.startswith('['):
-#         end_idx = message.find(']')
-#         if end_idx == -1:
-#             break
-#         message = message[end_idx+1:].lstrip()
-#     return message
+def extract_nested_log_info(line: str) -> tuple[str | None, str | None, str]:
+    match = re.match(r"Log\w+:\s*\w+:\s*(Log\w+):\s*(Warning|Error|Display|Info):\s*(.*)", line)
+    if match:
+        category = match.group(1)
+        severity = match.group(2)
+        message = match.group(3)
+        return category, severity, message
+    return None, None, line
 
 def cut_after_timestamp_block(message: str) -> str:
     match = re.search(r"\[\d+s:\d+ms:\d+us\]", message)
