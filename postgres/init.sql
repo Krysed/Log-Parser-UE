@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS issues (
 
 CREATE TABLE IF NOT EXISTS error_traceback (
     id SERIAL PRIMARY KEY,
-    error_id INT REFERENCES issues(id),
+    issue_id INT REFERENCES issues(id),
     message TEXT NOT NULL,
     line_number INT,
     hash TEXT UNIQUE

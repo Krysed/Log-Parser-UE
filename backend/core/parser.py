@@ -1,5 +1,5 @@
 from datetime import datetime
-from .logger import logger
+# from .logger import logger
 import hashlib
 import base64
 import json
@@ -7,38 +7,55 @@ import re
 import os
 
 def parse_line(line: str, line_number: int, filename: str):
+    if is_not_relevent_line(line):
+        return 
     category = None
     log_severity = None
     timestamp, message = timestamp_match(line)
     message = line.strip() if message is None else message
 
-    category_match = re.search(r"(Log\w+):", line)
-    if category_match:
-        category = category_match.group(1)
+    if re.match(r"^[=\-\*_]{5,}$", message): # if its a separator, return early and set category as a "Separator"
+        return {
+            "severity": None,
+            "category": "Separator",
+            "message": message,
+            "timestamp": timestamp,
+            "line_number": line_number,
+            "log_entry_id": generate_log_id_hash(timestamp, os.path.basename(filename), line_number, line),
+        }
 
-    line_lower = line.lower()
-    if "error(s)" in line_lower:
-        log_severity = None
-    elif "error" in line_lower:
-        if "warning" in line_lower:
-            log_severity = "warning"
-        else:
-            log_severity = "error"
-    elif "warning" in line_lower:
-        log_severity = "warning"
-    elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
-        log_severity = "traceback"
+    nested_category, nested_severity, nested_message = extract_nested_log_info(line)
+    if nested_category and nested_severity and nested_message:
+        category = nested_category
+        log_severity = nested_severity
+        message = nested_message
+    else:
+        category = parse_category_from_line(line)
+        line_lower = line.lower()
+        if "error(s)" in line_lower or "warning(s)" in line_lower:
+            log_severity = None
+        elif "error" in line_lower:
+            if "warning" in line_lower:
+                log_severity = "Warning"
+            else:
+                log_severity = "Error"
+        elif "warning" in line_lower:
+            log_severity = "Warning"
+        elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
+            log_severity = "Traceback"
 
-    if log_severity and message.startswith(log_severity.capitalize()):
-        type_len = len(log_severity)
-        if message[type_len:type_len+1] in [":", " "]:
-            message = message[type_len:].lstrip(": ").lstrip()
+    if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
+        message = parse_retry_message(message)
+    message = remove_bracket_prefixes(message)
+    message = cut_after_timestamp_block(message)
 
-    if category and message.startswith(category):
-        category_len = len(category)
-        if message[category_len:category_len+1] in [":", " "]:
-            message = message[category_len:].lstrip(": ").lstrip()
-    
+    if category:
+        message = strip_prefix_if_present(message, category)
+    if log_severity:
+        message = strip_prefix_if_present(message, log_severity)
+
+    message = remove_trailing_log_marker(message)
+
     basename = os.path.basename(filename)
     log = {
             "datetime": timestamp,
@@ -68,13 +85,16 @@ def parse_log_file(path: str) -> list:
     parsed_entries = []
     current_error = None
     traceback_array = []
+    traceback_after_sep = 0
     collecting_traceback = False
 
     for i, line in enumerate(lines):
         parsed = parse_line(line, i + 1, path)
+        if parsed is None:
+            continue
         line_lower = line.lower()
 
-        if "Error(s)" in line and "Warning(s)" in line:
+        if "Error(s)" in line and "Warning(s)" in line: # This kind of line we skip
             continue
 
         if ("traceback (most recent call last)" in line_lower or "commandletexception" in line_lower or "btraceack" in line_lower):
@@ -83,41 +103,37 @@ def parse_log_file(path: str) -> list:
             continue
 
         if collecting_traceback:
-            if (
-                line.strip() == ""
-                or ("error" not in line_lower and not line_lower.strip().startswith("at "))
-            ):
+            if parsed.get("category") == "Separator":
+                traceback_array.append(parsed)
+                traceback_after_sep = 2
+                continue
+            stripped_line = line.strip()
+            if (stripped_line == "" or ("error" not in line_lower and not line_lower.strip().startswith("at ")) and traceback_after_sep < 1):
                 collecting_traceback = False
 
                 if traceback_array:
-                    if "commandletexception" in traceback_array[0]["message"].lower():
-                        issue_message = traceback_array[0]["message"]
-                    else:
-                        issue_message = traceback_array[-1]["message"]
-
-                    collected_traceback = {
-                        "severity": "error",
-                        "message": issue_message,
-                        "timestamp": traceback_array[-1]["timestamp"],
-                        "category": traceback_array[-1].get("category"),
-                        "line_number": traceback_array[-1]["line_number"],
-                        "traceback": traceback_array,
-                        "log_entry_id": traceback_array[-1].get("log_entry_id"),
-                    }
-
-                    parsed_entries.append(collected_traceback)
+                    parsed_entries.append(finalize_traceback(traceback_array))
                     traceback_array = []
                 continue
+
             else:
                 traceback_array.append(parsed)
+                traceback_after_sep -= 1
+
+                is_last_line = (i == len(lines) - 1)
+                if is_last_line and traceback_array:
+                    # Finalize traceback at EOF
+                    parsed_entries.append(finalize_traceback(traceback_array))
+                    traceback_array = []
+                    collecting_traceback = False
                 continue
 
-        if parsed["severity"] == "error":
+        if parsed["severity"] == "Error":
             if current_error:
                 parsed_entries.append(current_error)
             current_error = parsed
             current_error["traceback"] = []
-        elif parsed["severity"] == "warning":
+        elif parsed["severity"] == "Warning":
             if current_error:
                 parsed_entries.append(current_error)
                 current_error = None
@@ -128,9 +144,9 @@ def parse_log_file(path: str) -> list:
 
     for entry in parsed_entries:
         entry["message_hash"] = get_log_hash(entry["message"])
-        if entry["severity"] == "error":
+        if entry["severity"] == "Error":
             content = entry["message"]
-            if "traceback" in entry:
+            if "Traceback" in entry:
                 for tb in entry["traceback"]:
                     content += tb["message"]
                 entry["event_hash"] = get_log_hash(content)
@@ -145,8 +161,126 @@ def timestamp_match(line):
             timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
             message = line[timestamp_match.end():].strip()
         except Exception as e:
-            logger.error(f"Error occured: {e}")
+            print(f"Error occured: {e}") # TODO: only for local run
+            # logger.error(f"Error occured: {e}")
     return timestamp, message
+
+def strip_prefix_if_present(message: str, prefix: str) -> str:
+    if prefix and (message.startswith(prefix) or message.startswith(prefix.lower())):
+        prefix_len = len(prefix)
+        next_char = message[prefix_len:prefix_len + 1]
+        if next_char in [":", " "]:
+            return message[prefix_len:].lstrip(": ").lstrip()
+    return message.strip()
+
+def parse_retry_message(message: str) -> str:
+    return re.sub(r"(Trying again in )\d+(\s+seconds)", r"\1x\2", message)
+
+def is_not_relevent_line(line: str) -> bool:
+    non_relevant_lines = ["Display: Warning/Error Summary (Unique only)",
+                          "Display: NOTE: Only first 50 warnings displayed."]
+    for l in non_relevant_lines:
+        if l in line:
+            return True
+
+def parse_category_from_line(line: str) -> str | None:
+    cleaned_line = remove_bracket_prefixes(line).lstrip()
+    # Explicit catch exception names
+    exception_match = re.match(r"(\w*Exception):", cleaned_line, re.IGNORECASE)
+    if exception_match:
+        return exception_match.group(1)
+
+    match = re.match(r"(Log[A-Za-z0-9]+):", cleaned_line)
+    if match:
+        return match.group(1)
+
+    if cleaned_line.endswith(":") and "Exception" in cleaned_line:
+        first_word = cleaned_line.split()[0]
+        if first_word.endswith(":") and "Exception" in first_word:
+            return first_word[:-1]
+
+    if cleaned_line.startswith("Display:"):
+        parts = cleaned_line.split(":")
+        for part in parts:
+            part = part.strip()
+            if part.startswith("Log") and part[3:].isalpha():
+                return part
+
+    lowered = line.lower()
+    if "warning:" in lowered:
+        try:
+            after = lowered.split("warning:")[1].strip()
+            if after:
+                words = after.split()
+                return " ".join(words[:2]).capitalize()
+        except IndexError:
+            pass
+    if "error:" in lowered:
+        try:
+            after = lowered.split("error:")[1].strip()
+            if after:
+                words = after.split()
+                return " ".join(words[:2]).capitalize()
+        except IndexError:
+            pass
+
+    return None
+
+# for logs of type : LogInit: Display: LogClass: Warning: Type mismatch in ...
+def extract_nested_log_info(line: str) -> tuple[str | None, str | None, str]:
+    match = re.match(r"Log\w+:\s*\w+:\s*(Log\w+):\s*(Warning|Error|Display|Info):\s*(.*)", line)
+    if match:
+        category = match.group(1)
+        severity = match.group(2)
+        message = match.group(3)
+        return category, severity, message
+    return None, None, line
+
+def cut_after_timestamp_block(message: str) -> str:
+    match = re.search(r"\[\d+s:\d+ms:\d+us\]", message)
+    if match:
+        return message[match.end():].lstrip()
+    return message
+
+def remove_trailing_log_marker(message: str) -> str:
+    return re.sub(r"\s*\[log\]$", "", message, flags=re.IGNORECASE).strip()
+
+def remove_bracket_prefixes(message: str) -> str:
+    while True:
+        message = message.lstrip()
+        if message.startswith('['):
+            end_idx = message.find(']')
+            if end_idx == -1:
+                break 
+            message = message[end_idx+1:].lstrip()
+        elif message.lower().startswith('error:'):
+            message = message[len('error:'):].lstrip()
+        elif message.lower().startswith('[error]:'):
+            message = message[len('[error]:'):].lstrip()
+        else:
+            break
+    return message
+
+def finalize_traceback(traceback_array: list) -> dict:
+    if not traceback_array:
+        return {}
+
+    if "editor terminated with exit code 1" in traceback_array[0]["message"].lower():
+        issue_message = traceback_array[0]["message"]
+        category_index = 0
+    else:
+        issue_message = traceback_array[-1]["message"]
+        category_index = -1
+
+    return {
+        "severity": "Error",
+        "message": issue_message,
+        "timestamp": traceback_array[-1]["timestamp"],
+        "category": traceback_array[category_index].get("category"),
+        "line_number": traceback_array[0]["line_number"],
+        "traceback": traceback_array,
+        "log_entry_id": traceback_array[-1].get("log_entry_id"),
+    }
 
 def get_log_hash(log):
     return hashlib.sha256(log.encode('utf-8')).hexdigest()

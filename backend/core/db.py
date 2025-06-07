@@ -36,7 +36,7 @@ def insert_traceback(event_id, message, line_number, hash):
     if existing:
         return 
     cursor.execute("""
-        INSERT INTO error_traceback (error_id, message, line_number, hash)
+        INSERT INTO error_traceback (issue_id, message, line_number, hash)
         VALUES (%s, %s, %s, %s)
     """, (event_id, message, line_number, hash))
 
@@ -74,7 +74,7 @@ def insert_parsed_logs_to_db(log_entries):
 
 def delete_specified_issue(issue_id):
     try:        
-        cursor.execute("DELETE FROM issues WHERE id = %s RETURNING id;", (issue_id,))
+        cursor.execute("DELETE FROM issues WHERE log_entry_id = %s RETURNING log_entry_id;", (issue_id,))
         deleted = cursor.fetchone()
         db.commit()
 
@@ -90,7 +90,7 @@ def update_issue_status(issue_id, new_status):
 
     try:
         cursor.execute(
-            "UPDATE issues SET status = %s WHERE id = %s RETURNING id;",
+            "UPDATE issues SET status = %s WHERE log_entry_id = %s RETURNING log_entry_id;",
             (new_status, issue_id)
         )
         updated = cursor.fetchone()
@@ -112,7 +112,7 @@ def get_issues(status=None):
         rows = cursor.fetchall()
         return [
             {
-                "id": row.get("id"),
+                "log_entry_id": row.get("log_entry_id"),
                 "message": row.get("message"),
                 "category": row.get("category", "unknown"),
                 "timestamp": row.get("timestamp", None),
@@ -124,14 +124,14 @@ def get_issues(status=None):
         logger.error(f"DB error fetching issues: {e}")
         raise
 
-def get_issue_by_id(issue_id: int):
+def get_issue_by_id(issue_id: str):
     try:
-        cursor.execute("SELECT * FROM issues WHERE id = %s;", (issue_id,))
+        cursor.execute("SELECT * FROM issues WHERE log_entry_id = %s;", (issue_id,))
         issue = cursor.fetchone()
         if not issue:
             return None
         return {
-            "id": issue.get("id"),
+            "log_entry_id": issue.get("log_entry_id"),
             "message": issue.get("message"),
             "category": issue.get("category", "unknown"),
             "timestamp": issue.get("timestamp", None),
