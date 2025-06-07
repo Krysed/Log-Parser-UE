@@ -37,8 +37,9 @@ async def collect_logfile(file: UploadFile = File(...)):
         logger.info(f"Parsed logfile: {file.filename}")
 
         basename = os.path.basename(filename)
+        deduplicated_entries = deduplicate_logs_by_hash(parsed_entries)
         with open(os.path.join(LOG_DIR, f"parsed_{basename}"), "wb") as f:
-            for entry in parsed_entries:
+            for entry in deduplicated_entries:
                 line = json.dumps(entry, default=str) + "\n"
                 f.write(line.encode("utf-8"))
 
@@ -132,3 +133,13 @@ def create_issue(
         db.rollback()
         logger.error(f"Error creating issue: {e}")
         raise HTTPException(status_code=500, detail="Failed to create issue")
+
+def deduplicate_logs_by_hash(entries):
+    seen_hashes = set()
+    deduplicated = []
+    for entry in entries:
+        msg_hash = entry.get("message_hash")
+        if msg_hash and msg_hash not in seen_hashes:
+            seen_hashes.add(msg_hash)
+            deduplicated.append(entry)
+    return deduplicated
