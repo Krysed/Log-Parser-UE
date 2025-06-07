@@ -43,7 +43,6 @@ def parse_line(line: str, line_number: int, filename: str):
             log_severity = "Warning"
         elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
             log_severity = "Traceback"
-        message = remove_bracket_prefixes(message) #TODO : TEST IF WORKS
 
     if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
         message = parse_retry_message(message)
@@ -105,6 +104,7 @@ def parse_log_file(path: str) -> list:
 
         if collecting_traceback:
             if parsed.get("category") == "Separator":
+                traceback_array.append(parsed)
                 traceback_after_sep = 2
                 continue
             stripped_line = line.strip()
@@ -261,7 +261,7 @@ def remove_bracket_prefixes(message: str) -> str:
             break
     return message
 
-def finalize_traceback(traceback_array: list[dict]) -> dict:
+def finalize_traceback(traceback_array: list) -> dict:
     if not traceback_array:
         return {}
 
@@ -277,7 +277,7 @@ def finalize_traceback(traceback_array: list[dict]) -> dict:
         "message": issue_message,
         "timestamp": traceback_array[-1]["timestamp"],
         "category": traceback_array[category_index].get("category"),
-        "line_number": traceback_array[-1]["line_number"],
+        "line_number": traceback_array[0]["line_number"],
         "traceback": traceback_array,
         "log_entry_id": traceback_array[-1].get("log_entry_id"),
     }
