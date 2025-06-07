@@ -1,5 +1,5 @@
 from datetime import datetime
-# from .logger import logger
+from .logger import logger
 import hashlib
 import base64
 import json
@@ -161,8 +161,7 @@ def timestamp_match(line):
             timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
             message = line[timestamp_match.end():].strip()
         except Exception as e:
-            print(f"Error occured: {e}") # TODO: only for local run
-            # logger.error(f"Error occured: {e}")
+            logger.error(f"Error occured: {e}")
     return timestamp, message
 
 def strip_prefix_if_present(message: str, prefix: str) -> str:
