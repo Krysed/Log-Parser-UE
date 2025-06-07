@@ -14,6 +14,16 @@ def parse_line(line: str, line_number: int, filename: str):
     timestamp, message = timestamp_match(line)
     message = line.strip() if message is None else message
 
+    if re.match(r"^[=\-\*_]{5,}$", message): # if its a separator, return early and set category as a "Separator"
+        return {
+            "severity": None,
+            "category": "Separator",
+            "message": message,
+            "timestamp": timestamp,
+            "line_number": line_number,
+            "log_entry_id": generate_log_id_hash(timestamp, os.path.basename(filename), line_number, line),
+        }
+
     nested_category, nested_severity, nested_message = extract_nested_log_info(line)
     if nested_category and nested_severity and nested_message:
         category = nested_category
@@ -34,8 +44,6 @@ def parse_line(line: str, line_number: int, filename: str):
         elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
             log_severity = "Traceback"
         message = remove_bracket_prefixes(message) #TODO : TEST IF WORKS
-
-    # category = parse_category_from_line(line)
 
     if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
         message = parse_retry_message(message)
@@ -78,6 +86,7 @@ def parse_log_file(path: str) -> list:
     parsed_entries = []
     current_error = None
     traceback_array = []
+    traceback_after_sep = 0
     collecting_traceback = False
 
     for i, line in enumerate(lines):
@@ -95,30 +104,28 @@ def parse_log_file(path: str) -> list:
             continue
 
         if collecting_traceback:
-            if (line.strip() == "" or ("error" not in line_lower and not line_lower.strip().startswith("at "))):
+            if parsed.get("category") == "Separator":
+                traceback_after_sep = 2
+                continue
+            stripped_line = line.strip()
+            if (stripped_line == "" or ("error" not in line_lower and not line_lower.strip().startswith("at ")) and traceback_after_sep < 1):
                 collecting_traceback = False
 
                 if traceback_array:
-                    if "commandletexception" in traceback_array[0]["message"].lower():
-                        issue_message = traceback_array[0]["message"]
-                    else:
-                        issue_message = traceback_array[-1]["message"]
-
-                    collected_traceback = {
-                        "severity": "Error",
-                        "message": issue_message,
-                        "timestamp": traceback_array[-1]["timestamp"],
-                        "category": traceback_array[-1].get("category"),
-                        "line_number": traceback_array[-1]["line_number"],
-                        "traceback": traceback_array,
-                        "log_entry_id": traceback_array[-1].get("log_entry_id"),
-                    }
-
-                    parsed_entries.append(collected_traceback)
+                    parsed_entries.append(finalize_traceback(traceback_array))
                     traceback_array = []
                 continue
+
             else:
                 traceback_array.append(parsed)
+                traceback_after_sep -= 1
+
+                is_last_line = (i == len(lines) - 1)
+                if is_last_line and traceback_array:
+                    # Finalize traceback at EOF
+                    parsed_entries.append(finalize_traceback(traceback_array))
+                    traceback_array = []
+                    collecting_traceback = False
                 continue
 
         if parsed["severity"] == "Error":
@@ -178,6 +185,11 @@ def is_not_relevent_line(line: str) -> bool:
 
 def parse_category_from_line(line: str) -> str | None:
     cleaned_line = remove_bracket_prefixes(line).lstrip()
+    # Explicit catch exception names
+    exception_match = re.match(r"(\w*Exception):", cleaned_line, re.IGNORECASE)
+    if exception_match:
+        return exception_match.group(1)
+
     match = re.match(r"(Log[A-Za-z0-9]+):", cleaned_line)
     if match:
         return match.group(1)
@@ -214,6 +226,7 @@ def parse_category_from_line(line: str) -> str | None:
 
     return None
 
+# for logs of type : LogInit: Display: LogClass: Warning: Type mismatch in ...
 def extract_nested_log_info(line: str) -> tuple[str | None, str | None, str]:
     match = re.match(r"Log\w+:\s*\w+:\s*(Log\w+):\s*(Warning|Error|Display|Info):\s*(.*)", line)
     if match:
@@ -247,6 +260,27 @@ def remove_bracket_prefixes(message: str) -> str:
         else:
             break
     return message
+
+def finalize_traceback(traceback_array: list[dict]) -> dict:
+    if not traceback_array:
+        return {}
+
+    if "editor terminated with exit code 1" in traceback_array[0]["message"].lower():
+        issue_message = traceback_array[0]["message"]
+        category_index = 0
+    else:
+        issue_message = traceback_array[-1]["message"]
+        category_index = -1
+
+    return {
+        "severity": "Error",
+        "message": issue_message,
+        "timestamp": traceback_array[-1]["timestamp"],
+        "category": traceback_array[category_index].get("category"),
+        "line_number": traceback_array[-1]["line_number"],
+        "traceback": traceback_array,
+        "log_entry_id": traceback_array[-1].get("log_entry_id"),
+    }
 
 def get_log_hash(log):
     return hashlib.sha256(log.encode('utf-8')).hexdigest()
