@@ -94,6 +94,7 @@ def parse_log_file(path: str) -> list:
     traceback_array = []
     traceback_after_sep = 0
     collecting_traceback = False
+    collecting_callstack = False
 
     for i, line in enumerate(lines):
         parsed = parse_line(line, i + 1, path)
@@ -144,6 +145,28 @@ def parse_log_file(path: str) -> list:
                     traceback_array = []
                     collecting_traceback = False
                 continue
+
+        # Handle warning + callstack collection
+        if "callstack:" in line_lower and parsed["severity"] == "Warning":
+            collecting_callstack = True
+            callstack_entry = parsed.copy()
+            callstack_entry["traceback"] = []
+            continue
+
+        if collecting_callstack:
+            if line.strip().startswith("0x"):  # typical callstack line
+                callstack_entry["traceback"].append({
+                    "message": line.strip(),
+                    "line": i + 1,
+                    "file": path,
+                })
+                continue
+            else:
+                # stop collecting if we hit something that doesn't look like callstack
+                parsed_entries.append(callstack_entry)
+                collecting_callstack = False
+                callstack_entry = None
+                # fall through to normal line handling
 
         if parsed["severity"] == "Error":
             if current_error:
