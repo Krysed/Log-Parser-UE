@@ -41,10 +41,10 @@ def parse_line(line: str, line_number: int, filename: str):
                 log_severity = "Error"
         elif "warning" in line_lower:
             log_severity = "Warning"
-        elif re.match(r"\s+at\s+", line) or "traceback" in line_lower:
+        elif re.match(r"\s+at\s+", line) or "traceback" or "callstack" in line_lower:
             log_severity = "Traceback"
 
-    if "Trying again in" in message: # only one Trying again in x seconds. will remain. 
+    if "Trying again in" in message: # only one Trying again in x seconds. will remain. Instead of multiple 6 12 etc. seconds.
         message = parse_retry_message(message)
     message = remove_bracket_prefixes(message)
     message = cut_after_timestamp_block(message)
@@ -53,8 +53,15 @@ def parse_line(line: str, line_number: int, filename: str):
         message = strip_prefix_if_present(message, category)
     if log_severity:
         message = strip_prefix_if_present(message, log_severity)
-
     message = remove_trailing_log_marker(message)
+    message = remove_initial_tags(message)
+
+    # If category is LogClass, override it with first word in message as is grained down log category
+    if category == "LogClass":
+        message_parts = message.split()
+        if message_parts:
+            category = message_parts[0]
+            message = " ".join(message_parts[1:]).strip()
 
     basename = os.path.basename(filename)
     log = {
@@ -87,22 +94,33 @@ def parse_log_file(path: str) -> list:
     traceback_array = []
     traceback_after_sep = 0
     collecting_traceback = False
+    collecting_callstack = False
 
     for i, line in enumerate(lines):
         parsed = parse_line(line, i + 1, path)
         if parsed is None:
             continue
-        line_lower = line.lower()
-
+        if parsed["message"] == "":
+            continue
         if "Error(s)" in line and "Warning(s)" in line: # This kind of line we skip
             continue
 
-        if ("traceback (most recent call last)" in line_lower or "commandletexception" in line_lower or "btraceack" in line_lower):
+        line_lower = line.lower()
+        if ("traceback (most recent call last)" in line_lower or "commandletexception" in line_lower or "btraceack" in line_lower or "=== critical error: ===" in line_lower):
             collecting_traceback = True
             traceback_array = [parsed]
             continue
 
         if collecting_traceback:
+            if "executing staticshutdownaftererror" in line_lower:
+                traceback_array.append(parsed)
+                parsed_entries.append(finalize_traceback(traceback_array))
+                traceback_array = []
+                collecting_traceback = False
+                continue
+            if "unhandled exception:" in line_lower or "fatal error!" in line_lower:
+                traceback_array.append(parsed)
+                continue
             if parsed.get("category") == "Separator":
                 traceback_array.append(parsed)
                 traceback_after_sep = 2
@@ -127,6 +145,28 @@ def parse_log_file(path: str) -> list:
                     traceback_array = []
                     collecting_traceback = False
                 continue
+
+        # Handle warning + callstack collection
+        if "callstack:" in line_lower and parsed["severity"] == "Warning":
+            collecting_callstack = True
+            callstack_entry = parsed.copy()
+            callstack_entry["traceback"] = []
+            continue
+
+        if collecting_callstack:
+            if line.strip().startswith("0x"):  # typical callstack line
+                callstack_entry["traceback"].append({
+                    "message": line.strip(),
+                    "line": i + 1,
+                    "file": path,
+                })
+                continue
+            else:
+                # stop collecting if we hit something that doesn't look like callstack
+                parsed_entries.append(callstack_entry)
+                collecting_callstack = False
+                callstack_entry = None
+                # fall through to normal line handling
 
         if parsed["severity"] == "Error":
             if current_error:
@@ -177,7 +217,9 @@ def parse_retry_message(message: str) -> str:
 
 def is_not_relevent_line(line: str) -> bool:
     non_relevant_lines = ["Display: Warning/Error Summary (Unique only)",
-                          "Display: NOTE: Only first 50 warnings displayed."]
+                          "Display: NOTE: Only first 50 warnings displayed.",
+                          "To disable this warning set",
+                          "Login successful"]
     for l in non_relevant_lines:
         if l in line:
             return True
@@ -260,11 +302,17 @@ def remove_bracket_prefixes(message: str) -> str:
             break
     return message
 
+def remove_initial_tags(message: str) -> str:
+    message = re.sub(r"^(?:\[(SDK|Core|DLSS)\]:\s*)+", "", message, re.IGNORECASE) 
+    message = re.sub(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*", "", message) # remove timestamp from the message
+    message = re.sub(r"^(?:\[(AssetLog|Compiler)\]\s*)+", "", message, re.IGNORECASE) 
+    return message.strip()
+
 def finalize_traceback(traceback_array: list) -> dict:
     if not traceback_array:
         return {}
 
-    if "editor terminated with exit code 1" in traceback_array[0]["message"].lower():
+    if "editor terminated with exit code 1" in traceback_array[0]["message"].lower() or "=== critical error: ===" in traceback_array[0]["message"].lower():
         issue_message = traceback_array[0]["message"]
         category_index = 0
     else:
