@@ -797,7 +797,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 57
+                "value": 77
               }
             ]
           },
@@ -881,7 +881,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT \n    et.issue_id,\n    e.log_entry_id,\n    e.severity,\n    et.message,\n    et.line_number\nFROM error_traceback et\nJOIN issues e ON et.issue_id = e.id\nWHERE e.status = 'open';\n",
+          "rawSql": "SELECT \n    et.id,\n    et.issue_id,\n    e.log_entry_id,\n    e.severity,\n    et.message,\n    et.line_number\nFROM error_traceback et\nJOIN issues e ON et.issue_id = e.id\nWHERE e.status = 'open';\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -902,7 +902,7 @@
           }
         }
       ],
-      "title": "Errors traceback",
+      "title": "Traceback",
       "type": "table"
     },
     {

@@ -1,5 +1,6 @@
 from datetime import datetime
 from .logger import logger
+from typing import Tuple
 import hashlib
 import base64
 import json
@@ -54,7 +55,6 @@ def parse_line(line: str, line_number: int, filename: str):
     if log_severity:
         message = strip_prefix_if_present(message, log_severity)
     message = remove_trailing_log_marker(message)
-    message = remove_initial_tags(message)
 
     # If category is LogClass, override it with first word in message as is grained down log category
     if category == "LogClass":
@@ -89,12 +89,15 @@ def parse_log_file(path: str) -> list:
     with open(path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    parsed_entries = []
     current_error = None
+    parsed_entries = []
     traceback_array = []
+    function_callstack = []
     traceback_after_sep = 0
     collecting_traceback = False
     collecting_callstack = False
+    collecting_function_callstack = False
+    current_callstack_file = ""
 
     for i, line in enumerate(lines):
         parsed = parse_line(line, i + 1, path)
@@ -167,6 +170,39 @@ def parse_log_file(path: str) -> list:
                 collecting_callstack = False
                 callstack_entry = None
                 # fall through to normal line handling
+
+        line_filename = extract_filename_from_line(line)
+        function_trace_match = re.search(r"\[(\w+::\w+:\d+)\]", line) # cpp specific DLSSCubinKernelMap::InitCubins:235
+
+        if not collecting_function_callstack and function_trace_match:
+            collecting_function_callstack = True
+            function_callstack = [parsed]
+            current_callstack_file = line_filename
+            continue
+
+        if collecting_function_callstack:
+            if parsed["severity"] == "Warning":
+                function_callstack.append(parsed)
+                parsed_entries.append({
+                    "severity": "Warning",
+                    "message": function_callstack[-1]["message"],
+                    "timestamp": function_callstack[0]["timestamp"],
+                    "category": function_callstack[0].get("category"),
+                    "line_number": function_callstack[0]["line_number"],
+                    "traceback": function_callstack,
+                    "log_entry_id": function_callstack[-1].get("log_entry_id"),
+                })
+                collecting_function_callstack = False
+                function_callstack = []
+                current_callstack_file = None
+                continue
+            elif current_callstack_file != line_filename:
+                collecting_function_callstack = False
+                function_callstack = []
+                current_callstack_file = line_filename
+            else:
+                function_callstack.append(parsed)
+                continue
 
         if parsed["severity"] == "Error":
             if current_error:
@@ -302,11 +338,11 @@ def remove_bracket_prefixes(message: str) -> str:
             break
     return message
 
-def remove_initial_tags(message: str) -> str:
-    message = re.sub(r"^(?:\[(SDK|Core|DLSS)\]:\s*)+", "", message, re.IGNORECASE) 
-    message = re.sub(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*", "", message) # remove timestamp from the message
-    message = re.sub(r"^(?:\[(AssetLog|Compiler)\]\s*)+", "", message, re.IGNORECASE) 
-    return message.strip()
+def extract_filename_from_line(line: str) -> str | None:
+    match = re.search(r"\b([\w\-]+\.(cpp|c|h|hpp|cs|py))\b", line, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
 
 def finalize_traceback(traceback_array: list) -> dict:
     if not traceback_array:
