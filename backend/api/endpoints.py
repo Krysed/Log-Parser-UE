@@ -117,15 +117,14 @@ def delete_issue(log_entry_id: str = Path(...)):
 @router.post("/issues")
 def create_issue(
     message: str = Body(...),
-    category: str = Body(...),
+    category: str = Body(default="Custom"),
     status: str = Body(default="open"),
     severity: str = Body(default="Error"),
     line_number: Optional[int] = Body(default=None)
 ):
     try:
-        log_entry_id = generate_log_id_hash(message)
         timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
-
+        log_entry_id = generate_log_id_hash(str(timestamp), None, line_number, message)
         issue_id, _ = insert_issue(get_log_hash(message), log_entry_id, message, timestamp, category, severity, line_number, status)
         db.commit()
         return {"message": f"Issue {log_entry_id} - inserted successfully"}
