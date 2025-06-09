@@ -9,7 +9,7 @@ Create a virtual environment for the project and install dependencies.<br>
 
 You can use the following command to create the virtual environment. <br> 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 ```
 
 Activate the `.venv` using:
@@ -23,7 +23,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 The project is based on `docker-compose` so make sure you have the appropriate software installed. <br>
-During the developement version of `docker-compose` 2.29.6 was used.<br>
+During the developement version of `docker-compose` 2.29.6 and `Python` 3.12.3 was used.<br>
 
 ### Starting the project:
 
