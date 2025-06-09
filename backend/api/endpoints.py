@@ -119,7 +119,7 @@ def create_issue(
     line_number: Optional[int] = Body(default=None)
 ):
     try:
-        timestamp = datetime.now(timezone.utc).strftime("%Y.%m.%d-%H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S%z")
         log_entry_id = generate_log_id_hash(str(timestamp), None, line_number, message)
         issue_id, _ = insert_issue(get_log_hash(message), log_entry_id, message, timestamp, category, severity, line_number, status)
         db.commit()

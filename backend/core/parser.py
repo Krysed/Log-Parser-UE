@@ -231,12 +231,16 @@ def timestamp_match(line):
     timestamp = None
     message = None
     timestamp_match = re.match(r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):(\d+)\](\[\s*\d+\])?", line)
+    
     if timestamp_match:
         try:
-            timestamp = datetime.strptime(timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S")
+            original_str = timestamp_match.group(1)
+            converted_str = original_str.replace('.', '-', 2).replace('-', ' ', 1).replace('.', ':')
+            timestamp = datetime.strptime(converted_str, "%Y-%m-%d %H:%M:%S")
             message = line[timestamp_match.end():].strip()
         except Exception as e:
-            logger.error(f"Error occured: {e}")
+            logger.error(f"Error occurred: {e}")
+    
     return timestamp, message
 
 def strip_prefix_if_present(message: str, prefix: str) -> str:
