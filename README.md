@@ -42,11 +42,11 @@ The API will be available at `http://localhost:8000`
 
 You can inset logfiles using the code provided in `build.py` by running:
 
-```python3
+```bash
 python3 build.py --insert-logfile=<logfile_path>
 ```
 You can insert many logfiles by providing paths to the files separated by comma `,` <br>
-```python3
+```bash
 python3 build.py --insert-logfile=<logfile_path1>,<logfile_path2>
 ```
 
@@ -60,7 +60,7 @@ Whole unmodified lines from the file will be inserted to the *Elasticsearch* for
 
 The found issues are *deduplicated* so by the message and only single instance of a particular error/warning is present in the database at a time.<br>
 
-Issues have generated id hash that is the same for entries in the Postgres, Elasticsearch and the results saved in the parsed file for ease of referencing the interesing lines.<br>
+Issues have generated id hash (*log_entry_id*) that is the same for entries in the Postgres, Elasticsearch and the results saved in the parsed file for ease of referencing the interesing lines.<br>
 
 ### Available API endpoints
 
@@ -72,14 +72,14 @@ POST	/logs	                            Process the logfile
 Issues (PostgreSQL)
 ```
 GET	    /issues	                            Returns a list of issues with a open status (additionaly you can filter using ?status=open)
-GET	    /issues/{log_entry_id}	            returns the issue based on id hash
+GET	    /issues/{issue_id}	                returns the id based on the issue
 POST	/issues	                            Inserts an issue by hand
-PATCH	/issues/{log_entry_id}	            Updates the issue status (eg. open -> closed)
-DELETE	/issues/{log_entry_id}	            Deletes a issue
+PATCH	/issues/{issue_id}	                Updates the issue status (eg. open -> closed)
+DELETE	/issues/{issue_id}	                Deletes a issue
 ```
 Logs (Elasticsearch)
 ```
-GET	    /logs/{log_entry_id}	            Returns specific log entry
+GET	    /logs/{log_entry_id}	            Returns specific log entry based on provided hash
 GET	    /logs/{log_entry_id}/line_number	Returns a original line number from the logfile
 GET	    /logs/{log_entry_id}/datetime	    Returns a timestamp associated with the log
 ```
@@ -94,7 +94,7 @@ There are two dashboards available that ware created in Grafana.<br>
 ### Testing available endpoints
 
 You can test current endpoints using the `curl` command.<br>
-Creating new issues (`log_entry_id` will be returned as a response):
+Creating new issues (`issue_id` will be returned as a response):
 ```bash
 curl -X POST "http://localhost:8000/issues" \
      -H "Content-Type: application/json" \
@@ -105,7 +105,7 @@ curl -X POST "http://localhost:8000/issues" \
      -H "Content-Type: application/json" \
      -d '{"message":"Error #2 message","category":"API","status":"open","severity":"Error"}'
 ```
-We expect to recieve the `log_entry_id` hash, like "Oah9cUzNHNcrtwFfCt4A"<br>
+We expect to recieve the `issue_id`"<br>
 
 List of all issues:<br>
 ```bash
@@ -117,29 +117,29 @@ List of filtered issues with status "open":<br>
 curl "http://localhost:8000/issues?status=open"
 ```
 
-Requesting a defails about a specific issue based on the `log_entry_id`:<br>
+Requesting an defails about a specific issue based on the `issue_id`:<br>
 ```bash
-curl "http://localhost:8000/issues/<log_entry_id>"
+curl "http://localhost:8000/issues/<issue_id>"
 ```
 
-Patching a existing issue based on `log_entry_id` hash eg. issue status from open to closed:<br>
+Patching an existing issue based on `issue_id` eg. issue status from open to closed:<br>
 ```bash
-curl -X PATCH "http://localhost:8000/issues/<log_entry_id>" \
+curl -X PATCH "http://localhost:8000/issues/<issue_id>" \
      -H "Content-Type: application/json" \
      -d '{"new_status":"closed"}'
 ```
 
 Removing issue:<br>
 ```bash
-curl -X DELETE "http://localhost:8000/issues/<log_entry_id>"
+curl -X DELETE "http://localhost:8000/issues/<issue_id>"
 ```
 
-Gathering full logline from Elasticsearch by the `log_entry_id` hash:<br>
+Gathering full logline from Elasticsearch by the `log_entry_id` hash (eg. *94rYyV6QlU_uCCUV71s2*):<br>
 ```bash
 curl "http://localhost:8000/logs/<log_entry_id>"
 ```
 
-Getting date and time from log:<br>
+Getting date and time of log:<br>
 ```bash
 curl "http://localhost:8000/logs/<log_entry_id>/datetime"
 ```
