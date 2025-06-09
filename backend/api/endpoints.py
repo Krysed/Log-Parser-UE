@@ -14,10 +14,6 @@ LOG_DIR = "/app/data/logs"
 
 router = APIRouter()
 
-@router.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
 # Accept the incoming logfiles
 @router.post("/logs")
 async def collect_logfile(file: UploadFile = File(...)):

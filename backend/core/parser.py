@@ -1,6 +1,5 @@
 from datetime import datetime
 from .logger import logger
-from typing import Tuple
 import hashlib
 import base64
 import json

@@ -8,8 +8,8 @@ With a Grafana dashboard to better visualize parsed issues their status and seve
 Create a virtual environment for the project and install dependencies.<br>
 
 You can use the following command to create the virtual environment. <br> 
-```python
-python3 build.py --setup
+```bash
+python -m venv .venv
 ```
 
 Activate the `.venv` using:
@@ -18,12 +18,7 @@ Activate the `.venv` using:
 source .venv/bin/activate
 ```
 
-Then install the python dependencies using:
-```python
-python3 build.py --setup
-```
-
-If needed, you can also manually install dependencies:
+Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
@@ -37,7 +32,8 @@ To start the project use the following command:
 ```bash
 docker-compose up --build
 ```
-This will build all the images used by the app and 
+This will build all the images used by the app and.<br>
+*Note: after successfull image build, please give some time for the app to start properly. (around 1 minute should be sufficient)*  
 
 Grafana will be available at [http://localhost:3000](http://localhost:3000)<br>
 The API will be available at `http://localhost:8000`
@@ -71,7 +67,6 @@ Issues have generated id hash that is the same for entries in the Postgres, Elas
 You can test the API with standard tools like `curl`
 
 ```
-GET	    /health	                            Health check endpoint
 POST	/logs	                            Process the logfile 
 ```
 Issues (PostgreSQL)
@@ -94,3 +89,62 @@ GET	    /logs/{log_entry_id}/datetime	    Returns a timestamp associated with th
 There are two dashboards available that ware created in Grafana.<br>
 - `Issues Dashboard` is Dashboard visualizing the parsed issues - Errors, Warnings and Tracebacks.
 - `Logfile Browser` is for browsing the inserted logfiles.
+
+
+### Testing available endpoints
+
+You can test current endpoints using the `curl` command.<br>
+Creating new issues (`log_entry_id` will be returned as a response):
+```bash
+curl -X POST "http://localhost:8000/issues" \
+     -H "Content-Type: application/json" \
+     -d '{"message":"Error #1 message","category":"LogEngine","status":"open","severity":"Error"}'
+```
+```bash
+curl -X POST "http://localhost:8000/issues" \
+     -H "Content-Type: application/json" \
+     -d '{"message":"Error #2 message","category":"API","status":"open","severity":"Error"}'
+```
+We expect to recieve the `log_entry_id` hash, like "Oah9cUzNHNcrtwFfCt4A"<br>
+
+List of all issues:<br>
+```bash
+curl "http://localhost:8000/issues"
+```
+
+List of filtered issues with status "open":<br>
+```bash
+curl "http://localhost:8000/issues?status=open"
+```
+
+Requesting a defails about a specific issue based on the `log_entry_id`:<br>
+```bash
+curl "http://localhost:8000/issues/<log_entry_id>"
+```
+
+Patching a existing issue based on `log_entry_id` hash eg. issue status from open to closed:<br>
+```bash
+curl -X PATCH "http://localhost:8000/issues/<log_entry_id>" \
+     -H "Content-Type: application/json" \
+     -d '{"new_status":"closed"}'
+```
+
+Removing issue:<br>
+```bash
+curl -X DELETE "http://localhost:8000/issues/<log_entry_id>"
+```
+
+Gathering full logline from Elasticsearch by the `log_entry_id` hash:<br>
+```bash
+curl "http://localhost:8000/logs/<log_entry_id>"
+```
+
+Getting date and time from log:<br>
+```bash
+curl "http://localhost:8000/logs/<log_entry_id>/datetime"
+```
+
+Getting the line number from log:<br>
+```bash
+curl "http://localhost:8000/logs/<log_entry_id>/line_number"
+```
