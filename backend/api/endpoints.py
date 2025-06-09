@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Path, Query, Bod
 from typing import Optional
 from datetime import datetime, timezone
 from core.db import db, insert_parsed_logs_to_db, insert_issue, delete_specified_issue, update_issue_status, get_issues, get_issue_by_id
-from core.es import insert_logfile_to_es, fetch_log_entry, fetch_log_datetime, fetch_log_line_number
+from core.es import insert_logfile_to_es, fetch_log_entry, fetch_log_datetime, fetch_log_line_number, es
 from core.parser import parse_log_file, generate_log_id_hash, get_log_hash
 from core.logger import logger
 
@@ -71,7 +71,7 @@ def get_log_datetime(log_entry_id: str):
     return {"datetime": datetime_value}
 
 # Postgres 
-@router.get("/issues/{log_entry_id}")
+@router.get("/issues/{issue_id}")
 def get_issue(log_entry_id: str):
     issue = get_issue_by_id(log_entry_id)
     if not issue:
@@ -88,25 +88,25 @@ def list_issues(status: Optional[str] = Query(None)):
         logger.error(f"API error: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve issues")
 
-@router.patch("/issues/{log_entry_id}")
-def patch_issue_status(log_entry_id: str, new_status: str = Body(..., embed=True)):
+@router.patch("/issues/{issue_id}")
+def patch_issue_status(issue_id: str, new_status: str = Body(..., embed=True)):
     try:
-        updated = update_issue_status(log_entry_id, new_status)
+        updated = update_issue_status(issue_id, new_status)
         if not updated:
             raise HTTPException(status_code=404, detail="Issue not found")
-        return {"message": f"Issue {log_entry_id} status updated to '{new_status}'"}
+        return {"message": f"Issue {issue_id} status updated to '{new_status}'"}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to update issue status")
 
-@router.delete("/issues/{log_entry_id}")
-def delete_issue(log_entry_id: str = Path(...)):
+@router.delete("/issues/{issue_id}")
+def delete_issue(issue_id: str = Path(...)):
     try:
-        deleted = delete_specified_issue(log_entry_id)
+        deleted = delete_specified_issue(issue_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Issue not found")
-        return {"message": f"Issue {log_entry_id} deleted."}
+        return {"message": f"Issue {issue_id} deleted."}
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to delete issue and events")
 
@@ -123,7 +123,19 @@ def create_issue(
         log_entry_id = generate_log_id_hash(str(timestamp), None, line_number, message)
         issue_id, _ = insert_issue(get_log_hash(message), log_entry_id, message, timestamp, category, severity, line_number, status)
         db.commit()
-        return {"message": f"Issue {log_entry_id} - inserted successfully"}
+        issue_doc = {
+            "message": message,
+            "category": category,
+            "status": status,
+            "severity": severity,
+            "line_number": line_number,
+            "@timestamp": timestamp,
+            "log_entry_id": log_entry_id,
+            "issue_id": issue_id,
+        }
+        es.index(index="logs", id=issue_id, body=issue_doc)
+
+        return {"message": f"Issue {issue_id} - inserted successfully"}
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating issue: {e}")
