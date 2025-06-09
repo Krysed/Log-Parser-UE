@@ -16,7 +16,6 @@ logging.basicConfig(level=logging.INFO)
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--clean", action="store_true", default=False,help="Clean logfiles, remove attached volumes. Use when want to do a clean start of te project.")
-    parser.add_argument("--build-images", action="store_true", default=False, help="Build docker images required for the project.")
     parser.add_argument("--insert-logfile", metavar="regexp", nargs="?", const="", default=None, help="Path to the logfile to parse and insert (--insert-logfile='<file_path>') Can place multiple logfiles separated by `,` Each logfile can be 10 mb max.")
 
     return parser.parse_args(sys.argv[1:])
@@ -54,4 +53,6 @@ if __name__ == "__main__":
         clean_parsed_logfile_contents()
     elif switches.insert_logfile:
         insert_log(switches.insert_logfile)
+    else:
+        logging.info(f"Please sellect appropriate flag while running the script:\n--clean\n--insert-logfile=<logfile_path>")
     

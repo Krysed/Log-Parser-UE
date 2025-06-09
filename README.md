@@ -32,8 +32,8 @@ To start the project use the following command:
 ```bash
 docker-compose up --build
 ```
-This will build all the images used by the app and.<br>
-*Note: after successfull image build, please give some time for the app to start properly. (around 1 minute should be sufficient)*  
+This will build all the images used by the app.<br>
+*Note: after successfull image build, please give some time for the app to start properly before inserting logfiles. (around 1 minute should be sufficient)*  
 
 Grafana will be available at [http://localhost:3000](http://localhost:3000)<br>
 The API will be available at `http://localhost:8000`
